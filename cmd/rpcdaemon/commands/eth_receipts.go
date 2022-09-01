@@ -269,13 +269,36 @@ func (api *APIImpl) GetTransactionReceipt(ctx context.Context, txnHash common.Ha
 	var ok bool
 
 	blockNum, ok, err = api.txnLookup(ctx, tx, txnHash)
-	if !ok || blockNum == 0 {
+	if err != nil {
+		return nil, err
+	}
+
+	cc, err := api.chainConfig(tx)
+	if err != nil {
+		return nil, err
+	}
+
+	if !ok && cc.Bor == nil {
+		return nil, nil
+	}
+
+	// if not ok and cc.Bor != nil then we might have a bor transaction
+	if !ok {
+		blockNumPtr, err := rawdb.ReadBorTxLookupEntry(tx, txnHash)
+		if err != nil {
+			return nil, err
+		}
+		if blockNumPtr == nil {
+			return nil, nil
+		}
+
+		blockNum = *blockNumPtr
+	}
+
+	if blockNum == 0 {
 		// It is not an ideal solution (ideal solution requires extending TxnLookupReply proto type to include bool flag indicating absense of result),
 		// but 0 block number is used here to mean that the transaction is not found
 		return nil, nil
-	}
-	if err != nil {
-		return nil, err
 	}
 
 	block, err := api.blockByNumberWithSenders(tx, blockNum)
@@ -286,10 +309,6 @@ func (api *APIImpl) GetTransactionReceipt(ctx context.Context, txnHash common.Ha
 		return nil, nil // not error, see https://github.com/ledgerwatch/erigon/issues/1645
 	}
 
-	cc, err := api.chainConfig(tx)
-	if err != nil {
-		return nil, err
-	}
 	var txnIndex uint64
 	var txn types.Transaction
 	for idx, transaction := range block.Transactions() {

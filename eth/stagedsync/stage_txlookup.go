@@ -12,7 +12,7 @@ import (
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/common/dbutils"
 	"github.com/ledgerwatch/erigon/core/rawdb"
-	"github.com/ledgerwatch/erigon/crypto"
+	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/ethdb/prune"
 	"github.com/ledgerwatch/erigon/turbo/snapshotsync"
 	"github.com/ledgerwatch/log/v3"
@@ -116,10 +116,9 @@ func txnLookupTransform(logPrefix string, tx kv.RwTx, blockFrom, blockTo uint64,
 				return err
 			}
 		}
-
-		if cfg.isBor {
-			borPrefix := []byte("matic-bor-receipt-")
-			if err := next(k, crypto.Keccak256(append(append(borPrefix, k...), v...)), blockNumBytes); err != nil {
+		if cfg.isBor && blocknum%64 == 0 && rawdb.HasBorReceipts(tx, blocknum) {
+			borTxHash := types.ComputeBorTxHash(blocknum, blockHash)
+			if err := tx.Append(kv.BorTxLookup, borTxHash.Bytes(), dbutils.EncodeBlockNumber(blocknum)); err != nil {
 				return err
 			}
 		}
@@ -223,9 +222,10 @@ func deleteTxLookupRange(tx kv.RwTx, logPrefix string, blockFrom, blockTo uint64
 				return err
 			}
 		}
-		if cfg.isBor {
-			borPrefix := []byte("matic-bor-receipt-")
-			if err := next(k, crypto.Keccak256(append(append(borPrefix, k...), v...)), nil); err != nil {
+
+		if cfg.isBor && blocknum%64 == 0 && rawdb.HasBorReceipts(tx, blocknum) {
+			borTxHash := types.ComputeBorTxHash(blocknum, blockHash)
+			if err := tx.Append(kv.BorTxLookup, borTxHash.Bytes(), dbutils.EncodeBlockNumber(blocknum)); err != nil {
 				return err
 			}
 		}

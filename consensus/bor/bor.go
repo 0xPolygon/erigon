@@ -43,7 +43,9 @@ const (
 
 // Bor protocol constants.
 var (
-	defaultSprintLength = uint64(64) // Default number of blocks after which to checkpoint and reset the pending votes
+	defaultSprintLength = map[string]uint64{
+		"0": 64,
+	} // Default number of blocks after which to checkpoint and reset the pending votes
 
 	extraVanity = 32 // Fixed number of extra-data prefix bytes reserved for signer vanity
 	extraSeal   = 65 // Fixed number of extra-data suffix bytes reserved for signer seal
@@ -183,8 +185,8 @@ func CalcProducerDelay(number uint64, succession int, c *params.BorConfig) uint6
 	// When the block is the first block of the sprint, it is expected to be delayed by `producerDelay`.
 	// That is to allow time for block propagation in the last sprint
 	delay := c.CalculatePeriod(number)
-	if number%c.Sprint == 0 {
-		delay = c.ProducerDelay
+	if number%c.CalculateSprint(number) == 0 {
+		delay = c.CalculateProducerDelay(number)
 	}
 	if succession > 0 {
 		delay += uint64(succession) * c.CalculateBackupMultiplier(number)
@@ -243,7 +245,7 @@ func New(
 	borConfig := chainConfig.Bor
 
 	// Set any missing consensus parameters to their defaults
-	if borConfig != nil && borConfig.Sprint == 0 {
+	if borConfig != nil && borConfig.CalculateSprint(0) == 0 {
 		borConfig.Sprint = defaultSprintLength
 	}
 
@@ -323,7 +325,7 @@ func (c *Bor) verifyHeader(chain consensus.ChainHeaderReader, header *types.Head
 	}
 
 	// check extr adata
-	isSprintEnd := (number+1)%c.config.Sprint == 0
+	isSprintEnd := isSprintStart(number+1, c.config.CalculateSprint(number))
 
 	// Ensure that the extra-data contains a signer list on checkpoint, but none otherwise
 	signersBytes := len(header.Extra) - extraVanity - extraSeal
@@ -418,7 +420,7 @@ func (c *Bor) verifyCascadingFields(chain consensus.ChainHeaderReader, header *t
 	}
 
 	// verify the validator list in the last sprint block
-	if isSprintStart(number, c.config.Sprint) {
+	if isSprintStart(number, c.config.CalculateSprint(number)) {
 		parentValidatorBytes := parent.Extra[extraVanity : len(parent.Extra)-extraSeal]
 		validatorsBytes := make([]byte, len(snap.ValidatorSet.Validators)*validatorHeaderBytesLength)
 
@@ -554,11 +556,14 @@ func (c *Bor) snapshot(chain consensus.ChainHeaderReader, number uint64, hash co
 				return nil, err
 			}
 			c.recents.Add(snap.Hash, snap)
-			// We've generated a new checkpoint snapshot, save to disk
-			if err = snap.store(c.DB); err != nil {
-				return nil, err
+
+			if snap.Number%checkpointInterval == 0 {
+				// We've generated a new checkpoint snapshot, save to disk
+				if err = snap.store(c.DB); err != nil {
+					return nil, err
+				}
+				log.Trace("Stored snapshot to disk", "number", snap.Number, "hash", snap.Hash)
 			}
-			log.Trace("Stored snapshot to disk", "number", snap.Number, "hash", snap.Hash)
 		}
 		if cont {
 			snap = nil
@@ -663,7 +668,7 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, s
 	header.Extra = header.Extra[:extraVanity]
 
 	// get validator set if number
-	if (number+1)%c.config.Sprint == 0 {
+	if isSprintStart(number+1, c.config.CalculateSprint(number)) {
 		newValidators, err := c.GetCurrentValidators(number + 1)
 		if err != nil {
 			return errors.New("unknown validators")
@@ -709,7 +714,7 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, s
 func (c *Bor) Finalize(config *params.ChainConfig, header *types.Header, state *state.IntraBlockState, txs types.Transactions, uncles []*types.Header, r types.Receipts, e consensus.EpochReader, chain consensus.ChainHeaderReader, syscall consensus.SystemCall) (types.Transactions, types.Receipts, error) {
 	var err error
 	headerNumber := header.Number.Uint64()
-	if headerNumber%c.config.Sprint == 0 {
+	if isSprintStart(headerNumber, c.config.CalculateSprint(headerNumber)) {
 		cx := chainContext{Chain: chain, Bor: c}
 		// check and commit span
 		if err := c.checkAndCommitSpan(state, header, cx, syscall); err != nil {
@@ -777,7 +782,7 @@ func (c *Bor) FinalizeAndAssemble(chainConfig *params.ChainConfig, header *types
 	// stateSyncData := []*types.StateSyncData{}
 
 	headerNumber := header.Number.Uint64()
-	if headerNumber%c.config.Sprint == 0 {
+	if isSprintStart(headerNumber, c.config.CalculateSprint(headerNumber)) {
 		cx := chainContext{Chain: chain, Bor: c}
 
 		// check and commit span
@@ -814,7 +819,7 @@ func (c *Bor) FinalizeAndAssemble(chainConfig *params.ChainConfig, header *types
 	// bc.SetStateSync(stateSyncData)
 
 	// return the final block for sealing
-	return block, nil, types.Receipts{}, nil
+	return block, txs, receipts, nil
 }
 
 func (c *Bor) GenerateSeal(chain consensus.ChainHeaderReader, currnt, parent *types.Header, call consensus.Call) []rlp.RawValue {
@@ -882,22 +887,22 @@ func (c *Bor) Seal(chain consensus.ChainHeaderReader, block *types.Block, result
 	copy(header.Extra[len(header.Extra)-extraSeal:], sighash)
 
 	// Wait until sealing is terminated or delay timeout.
-	log.Trace("Waiting for slot to sign and propagate", "delay", common.PrettyDuration(delay))
+	log.Info("Waiting for slot to sign and propagate", "delay", common.PrettyDuration(delay))
 	go func() {
 		select {
 		case <-stop:
-			log.Debug("Discarding sealing operation for block", "number", number)
+			log.Info("Discarding sealing operation for block", "number", number)
 			return
 		case <-time.After(delay):
 			if wiggle > 0 {
-				log.Trace(
+				log.Info(
 					"Sealing out-of-turn",
 					"number", number,
 					"wiggle", common.PrettyDuration(wiggle),
 					"in-turn-signer", snap.ValidatorSet.GetProposer().Address.Hex(),
 				)
 			}
-			log.Trace(
+			log.Info(
 				"Sealing successful",
 				"number", number,
 				"delay", delay,
@@ -1044,7 +1049,7 @@ func (c *Bor) needToCommitSpan(span *Span, headerNumber uint64) bool {
 	}
 
 	// if current block is first block of last sprint in current span
-	if span.EndBlock > c.config.Sprint && span.EndBlock-c.config.Sprint+1 == headerNumber {
+	if span.EndBlock > c.config.CalculateSprint(headerNumber) && span.EndBlock-c.config.CalculateSprint(headerNumber)+1 == headerNumber {
 		return true
 	}
 
@@ -1137,7 +1142,7 @@ func (c *Bor) fetchAndCommitSpan(
 	}
 
 	// get validators bytes
-	var validators []MinimalVal
+	validators := make([]MinimalVal, 0, len(heimdallSpan.ValidatorSet.Validators))
 	for _, val := range heimdallSpan.ValidatorSet.Validators {
 		validators = append(validators, val.MinimalVal())
 	}
@@ -1147,7 +1152,7 @@ func (c *Bor) fetchAndCommitSpan(
 	}
 
 	// get producers bytes
-	var producers []MinimalVal
+	producers := make([]MinimalVal, 0, len(heimdallSpan.SelectedProducers))
 	for _, val := range heimdallSpan.SelectedProducers {
 		producers = append(producers, val.MinimalVal())
 	}
@@ -1198,7 +1203,7 @@ func (c *Bor) CommitStates(
 		return nil, err
 	}
 
-	to := time.Unix(int64(chain.Chain.GetHeaderByNumber(number-c.config.Sprint).Time), 0)
+	to := time.Unix(int64(chain.Chain.GetHeaderByNumber(number-c.config.CalculateSprint(number)).Time), 0)
 	lastStateID := _lastStateID.Uint64()
 	log.Trace(
 		"Fetching state updates from Heimdall",
@@ -1283,7 +1288,7 @@ func (c *Bor) getNextHeimdallSpanForTest(
 	} else {
 		span.StartBlock = span.EndBlock + 1
 	}
-	span.EndBlock = span.StartBlock + (100 * c.config.Sprint) - 1
+	span.EndBlock = span.StartBlock + (100 * c.config.CalculateSprint(headerNumber)) - 1
 
 	selectedProducers := make([]Validator, len(snap.ValidatorSet.Validators))
 	for i, v := range snap.ValidatorSet.Validators {
@@ -1330,7 +1335,7 @@ func getUpdatedValidatorSet(oldValidatorSet *ValidatorSet, newVals []*Validator)
 	v := oldValidatorSet
 	oldVals := v.Validators
 
-	var changes []*Validator
+	changes := make([]*Validator, 0, len(oldVals))
 	for _, ov := range oldVals {
 		if f, ok := validatorContains(newVals, ov); ok {
 			ov.VotingPower = f.VotingPower

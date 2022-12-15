@@ -34,7 +34,18 @@ func (api *APIImpl) GetTransactionByHash(ctx context.Context, txnHash common.Has
 	if err != nil {
 		return nil, err
 	}
-	if ok {
+	// Private API returns 0 if transaction is not found.
+	if blockNum == 0 && chainConfig.Bor != nil {
+		blockNumPtr, err := rawdb.ReadBorTxLookupEntry(tx, txnHash)
+		if err != nil {
+			return nil, err
+		}
+		if blockNumPtr == nil {
+			return nil, nil
+		}
+		blockNum = *blockNumPtr
+	}
+	if ok || blockNum != 0 {
 		block, err := api.blockByNumberWithSenders(tx, blockNum)
 		if err != nil {
 			return nil, err

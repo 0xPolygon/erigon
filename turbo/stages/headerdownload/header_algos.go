@@ -1188,9 +1188,13 @@ func (hd *HeaderDownload) SetRequestId(requestId int) {
 
 func (hd *HeaderDownload) AddMinedHeader(header *types.Header) error {
 	buf := bytes.NewBuffer(nil)
-	if err := header.EncodeRLP(buf); err != nil {
+
+	headerEnc, err := rlp.EncodeToBytes(&header)
+	if err != nil {
 		return err
 	}
+	buf.Write(headerEnc)
+
 	segments, _, err := hd.SingleHeaderAsSegment(buf.Bytes(), header, false /* penalizePoSBlocks */)
 	if err != nil {
 		return err

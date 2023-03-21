@@ -108,6 +108,13 @@ type Header struct {
 	// This is the block hash given by the CL,we cannot validate in the context of the state.
 	BlockHashCL libcommon.Hash
 	TxHashSSZ   libcommon.Hash // They decided to hash txs differently than EL :(
+
+	// length of TxDependency             -> n (n = number of transactions in the block)
+	// length of TxDependency[i]          -> 2 + k (k = a whole number)
+	// first 2 element in TxDependency[i] -> transaction index, and flag representing if delay is allowed or not
+	//                                       (0 -> delay is not allowed, 1 -> delay is allowed)
+	// next k elements in TxDependency[i] -> transaction indexes on which transaction i is dependent on
+	TxDependency [][]uint64 `json:"txDependency" rlp:"optional"`
 }
 
 func bitsToBytes(bitLen int) (byteLen int) {
@@ -159,6 +166,22 @@ func (h *Header) EncodingSize() int {
 	if h.BaseFee != nil {
 		encodingSize++
 		encodingSize += rlp.BigIntLenExcludingHead(h.BaseFee)
+	}
+
+	// TxDependency
+	if h.TxDependency != nil {
+		buff, err := rlp.EncodeToBytes(h.TxDependency)
+		if err != nil {
+			panic(err)
+		}
+		encodingSize += len(buff)
+
+		// alternative to above, both works fine
+		// var tmpBuffer bytes.Buffer
+		// if err := rlp.Encode(&tmpBuffer, h.TxDependency); err != nil {
+		// 	panic(err)
+		// }
+		// encodingSize += tmpBuffer.Len()
 	}
 
 	if h.WithdrawalsHash != nil {
@@ -294,6 +317,24 @@ func (h *Header) EncodeRLP(w io.Writer) error {
 	if h.BaseFee != nil {
 		if err := rlp.EncodeBigInt(h.BaseFee, w, b[:]); err != nil {
 			return err
+		}
+	}
+
+	// TxDependency
+	// buff, err := rlp.EncodeToBytes(h.TxDependency)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// if err := EncodeStructSizePrefix(len(buff), w, b[:]); err != nil {
+	// 	return err
+	// }
+	if h.TxDependency != nil {
+		// b[0] = 128
+		// if _, err := w.Write(b[:1]); err != nil {
+		// 	return err
+		// }
+		if err := rlp.Encode(w, h.TxDependency); err != nil {
+			return nil
 		}
 	}
 
@@ -434,6 +475,13 @@ func (h *Header) DecodeRLP(s *rlp.Stream) error {
 		return fmt.Errorf("read BaseFee: %w", err)
 	}
 	h.BaseFee = new(big.Int).SetBytes(b)
+
+	// TxDependency
+	if rawTxDep, err := s.Raw(); err != nil {
+		return err
+	} else {
+		rlp.DecodeBytes(rawTxDep, &h.TxDependency)
+	}
 
 	// WithdrawalsHash
 	if b, err = s.Bytes(); err != nil {
@@ -839,9 +887,11 @@ func (rb RawBody) EncodeRLP(w io.Writer) error {
 		return err
 	}
 	for _, uncle := range rb.Uncles {
-		if err := uncle.EncodeRLP(w); err != nil {
+		headerEnc, err := rlp.EncodeToBytes(&uncle)
+		if err != nil {
 			return err
 		}
+		w.Write(headerEnc)
 	}
 	// encode Withdrawals
 	if rb.Withdrawals != nil {
@@ -996,9 +1046,11 @@ func (bfs BodyForStorage) EncodeRLP(w io.Writer) error {
 		return err
 	}
 	for _, uncle := range bfs.Uncles {
-		if err := uncle.EncodeRLP(w); err != nil {
+		headerEnc, err := rlp.EncodeToBytes(&uncle)
+		if err != nil {
 			return err
 		}
+		w.Write(headerEnc)
 	}
 	// encode Withdrawals
 	// nil if pre-shanghai, empty slice if shanghai and no withdrawals in block, otherwise non-empty
@@ -1177,9 +1229,11 @@ func (bb Body) EncodeRLP(w io.Writer) error {
 		return err
 	}
 	for _, uncle := range bb.Uncles {
-		if err := uncle.EncodeRLP(w); err != nil {
+		headerEnc, err := rlp.EncodeToBytes(&uncle)
+		if err != nil {
 			return err
 		}
+		w.Write(headerEnc)
 	}
 	// encode Withdrawals
 	if bb.Withdrawals != nil {
@@ -1358,6 +1412,14 @@ func CopyHeader(h *Header) *Header {
 		cpy.WithdrawalsHash = new(libcommon.Hash)
 		cpy.WithdrawalsHash.SetBytes(h.WithdrawalsHash.Bytes())
 	}
+	if h.TxDependency != nil {
+		cpy.TxDependency = make([][]uint64, len(h.TxDependency))
+
+		for i, dep := range h.TxDependency {
+			cpy.TxDependency[i] = make([]uint64, len(dep))
+			copy(cpy.TxDependency[i], dep)
+		}
+	}
 	return &cpy
 }
 
@@ -1521,9 +1583,11 @@ func (bb Block) EncodeRLP(w io.Writer) error {
 		return err
 	}
 	// encode Header
-	if err := bb.header.EncodeRLP(w); err != nil {
+	headerEnc, err := rlp.EncodeToBytes(&bb.header)
+	if err != nil {
 		return err
 	}
+	w.Write(headerEnc)
 	// encode Transactions
 	if err := EncodeStructSizePrefix(txsLen, w, b[:]); err != nil {
 		return err
@@ -1553,9 +1617,11 @@ func (bb Block) EncodeRLP(w io.Writer) error {
 		return err
 	}
 	for _, uncle := range bb.uncles {
-		if err := uncle.EncodeRLP(w); err != nil {
+		headerEnc, err := rlp.EncodeToBytes(&uncle)
+		if err != nil {
 			return err
 		}
+		w.Write(headerEnc)
 	}
 	// encode Withdrawals
 	if bb.withdrawals != nil {
@@ -1601,6 +1667,7 @@ func (b *Block) TxHash() libcommon.Hash      { return b.header.TxHash }
 func (b *Block) ReceiptHash() libcommon.Hash { return b.header.ReceiptHash }
 func (b *Block) UncleHash() libcommon.Hash   { return b.header.UncleHash }
 func (b *Block) Extra() []byte               { return common.CopyBytes(b.header.Extra) }
+func (b *Block) TxDependency() [][]uint64    { return b.header.TxDependency }
 func (b *Block) BaseFee() *big.Int {
 	if b.header.BaseFee == nil {
 		return nil

@@ -6,6 +6,28 @@ release:
   prerelease: auto
 
 builds:
+  - id: darwin-amd64
+    main: ./cmd/erigon
+    binary: erigon
+    goos: [ darwin ]
+    goarch: [ amd64 ]
+    env:
+      - CC=o64-clang
+      - CXX=o64-clang++
+    tags: [ nosqlite, noboltdb ]
+    ldflags: -s -w
+
+  - id: darwin-arm64
+    main: ./cmd/erigon
+    binary: erigon
+    goos: [ darwin ]
+    goarch: [ arm64 ]
+    env:
+      - CC=oa64-clang
+      - CXX=oa64-clang++
+    tags: [ nosqlite, noboltdb ]
+    ldflags: -s -w
+  
   - id: linux-amd64
     main: ./cmd/erigon
     binary: erigon

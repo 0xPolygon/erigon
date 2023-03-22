@@ -2,7 +2,7 @@
 
 This repository is a fork of the Erigon repository (https://github.com/ledgerwatch/erigon). Our long term plan is to use and support upstream Erigon. We decided, in consultation with the Erigon team, to create a short term fork that we can test for stability and maintain. This is a short-to-medium-term mitigation strategy because Erigon is going through a period of rapid changes that will likely be breaking and not backward compatible.
 
-Erigon is an implementation of Ethereum (execution client with light client for consensus layer), on the efficiency frontier. [Archive Node](https://ethereum.org/en/developers/docs/nodes-and-clients/archive-nodes/#what-is-an-archive-node) by default.  
+Erigon is an implementation of Ethereum (execution client with light client for consensus layer), on the efficiency frontier. [Archive Node](https://ethereum.org/en/developers/docs/nodes-and-clients/archive-nodes/#what-is-an-archive-node) by default.
 
 ![Build status](https://github.com/ledgerwatch/erigon/actions/workflows/ci.yml/badge.svg)
 

@@ -27,7 +27,7 @@ builds:
       - CXX=oa64-clang++
     tags: [ nosqlite, noboltdb ]
     ldflags: -s -w
-  
+
   - id: linux-amd64
     main: ./cmd/erigon
     binary: erigon

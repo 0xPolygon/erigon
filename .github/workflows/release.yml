@@ -39,7 +39,7 @@ jobs:
       - name: Run GoReleaser
         run: |
             echo "${{ secrets.DOCKERHUB_KEY }}" | docker login -u "${{ secrets.DOCKERHUB }}" --password-stdin
-            mv /home/runner/.docker/config.json /root/.docker/config.json
+            sudo mv /home/runner/.docker/config.json /root/.docker/config.json
             make release
         env:
           GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}

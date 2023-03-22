@@ -227,7 +227,6 @@ release-dry-run: git-submodules
 		-e DOCKER_PASSWORD \
 		-e DOCKER_CREDS_FILE=/root/.docker/config.json \
 		-v /var/run/docker.sock:/var/run/docker.sock \
-		-v /root/.docker/config.json:/root/.docker/config.json \
 		-v `pwd`:/go/src/$(PACKAGE_NAME) \
 		-w /go/src/$(PACKAGE_NAME) \
 		goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
@@ -244,7 +243,6 @@ release: git-submodules
 		-e DOCKER_PASSWORD \
 		-e DOCKER_CREDS_FILE=/root/.docker/config.json \
 		-v /var/run/docker.sock:/var/run/docker.sock \
-		-v /root/.docker/config.json:/root/.docker/config.json \
 		-v `pwd`:/go/src/$(PACKAGE_NAME) \
 		-w /go/src/$(PACKAGE_NAME) \
 		goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \

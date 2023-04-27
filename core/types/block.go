@@ -334,7 +334,7 @@ func (h *Header) EncodeRLP(w io.Writer) error {
 		// 	return err
 		// }
 		if err := rlp.Encode(w, h.TxDependency); err != nil {
-			return nil
+			return err
 		}
 	}
 
@@ -477,7 +477,7 @@ func (h *Header) DecodeRLP(s *rlp.Stream) error {
 	h.BaseFee = new(big.Int).SetBytes(b)
 
 	// TxDependency
-	if rawTxDep, err := s.Raw(); err != nil {
+	if rawTxDep, err := s.Raw(); err != nil && err != rlp.EOL {
 		return err
 	} else {
 		rlp.DecodeBytes(rawTxDep, &h.TxDependency)

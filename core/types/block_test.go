@@ -251,7 +251,7 @@ func TestTxDependencyBlockEncodingBor(t *testing.T) {
 	check("MixDigest", block.MixDigest(), libcommon.HexToHash("bd4472abb6659ebe3ee06ee4d7b72a00a9f4d001caca51342001075469aff498"))
 	check("Root", block.Root(), libcommon.HexToHash("ef1552a40b7165c3cd773806b9e0c165b75356e0314bf0706f279c729f51e017"))
 	check("Hash", block.Hash(), libcommon.HexToHash("0xc6d8dc8995c0a4374bb9f87bd0dd8c0761e6e026a71edbfed5e961c9e55dbd6a"))
-	check("Nonce", block.Nonce(), uint64(0xa13a5a8c8f2bb1c4))
+	check("Nonce", block.Nonce().Uint64(), uint64(0xa13a5a8c8f2bb1c4))
 	check("Time", block.Time(), uint64(1426516743))
 	check("Size", block.Size(), common.StorageSize(len(blockEnc)))
 	check("TxDependency", block.TxDependency(), [][]uint64{{2, 1}, {1, 0}})
@@ -265,6 +265,55 @@ func TestTxDependencyBlockEncodingBor(t *testing.T) {
 	if !bytes.Equal(ourBlockEnc, blockEnc) {
 		t.Errorf("encoded block mismatch:\ngot:  %x\nwant: %x", ourBlockEnc, blockEnc)
 	}
+}
+
+func TestBlockDecoding(t *testing.T) {
+	t.Parallel()
+
+	// encoding taken from bor
+	blockEnc := common.FromHex("f901faf901f5a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000940000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800401020380a0000000000000000000000000000000000000000000000000000000000000000088000000000000000005c6c20201c20180c0c0")
+
+	var block Block
+
+	if err := rlp.DecodeBytes(blockEnc, &block); err != nil {
+		t.Fatal("decode error: ", err)
+	}
+
+	check := func(f string, got, want interface{}) {
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s mismatch: got %v, want %v", f, got, want)
+		}
+	}
+
+	check("GasLimit", block.GasLimit(), uint64(1))
+	check("GasUsed", block.GasUsed(), uint64(2))
+	check("Time", block.Time(), uint64(3))
+	check("Number", block.Number(), big.NewInt(4))
+	check("BaseFee", block.BaseFee(), big.NewInt(5))
+	check("TxDependency", block.TxDependency(), [][]uint64{{2, 1}, {1, 0}})
+}
+
+func TestGetBlockEncoding(t *testing.T) {
+	t.Parallel()
+
+	var block Block
+
+	block.header = &Header{
+		GasLimit:     uint64(1),
+		GasUsed:      uint64(2),
+		Time:         uint64(3),
+		Number:       big.NewInt(4),
+		BaseFee:      big.NewInt(5),
+		TxDependency: [][]uint64{{2, 1}, {1, 0}},
+	}
+
+	ourBlockEnc, err := rlp.EncodeToBytes(&block)
+
+	if err != nil {
+		t.Fatal("encode error: ", err)
+	}
+
+	fmt.Println("ourBlockEnc -", common.Bytes2Hex(ourBlockEnc))
 }
 
 func TestOnlyTxDepHeader(t *testing.T) {

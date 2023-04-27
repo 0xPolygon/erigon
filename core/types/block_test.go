@@ -87,7 +87,7 @@ func TestCanEncodeAndDecodeTxDependencyHeader(t *testing.T) {
 		GasUsed:         21000,
 		Time:            90,
 		Extra:           []byte("testing"),
-		TxDependency:    [][]uint64{{2, 0, 1}, {1, 0, 0}},
+		TxDependency:    [][]uint64{{2, 0, 1}, {1, 0, 0}, {0, 0}},
 		BaseFee:         big.NewInt(7_000_000_000),
 		WithdrawalsHash: new(libcommon.Hash),
 	}

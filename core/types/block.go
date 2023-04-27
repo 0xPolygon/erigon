@@ -175,13 +175,6 @@ func (h *Header) EncodingSize() int {
 			panic(err)
 		}
 		encodingSize += len(buff)
-
-		// alternative to above, both works fine
-		// var tmpBuffer bytes.Buffer
-		// if err := rlp.Encode(&tmpBuffer, h.TxDependency); err != nil {
-		// 	panic(err)
-		// }
-		// encodingSize += tmpBuffer.Len()
 	}
 
 	if h.WithdrawalsHash != nil {
@@ -321,18 +314,7 @@ func (h *Header) EncodeRLP(w io.Writer) error {
 	}
 
 	// TxDependency
-	// buff, err := rlp.EncodeToBytes(h.TxDependency)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// if err := EncodeStructSizePrefix(len(buff), w, b[:]); err != nil {
-	// 	return err
-	// }
 	if h.TxDependency != nil {
-		// b[0] = 128
-		// if _, err := w.Write(b[:1]); err != nil {
-		// 	return err
-		// }
 		if err := rlp.Encode(w, h.TxDependency); err != nil {
 			return err
 		}
@@ -887,11 +869,9 @@ func (rb RawBody) EncodeRLP(w io.Writer) error {
 		return err
 	}
 	for _, uncle := range rb.Uncles {
-		headerEnc, err := rlp.EncodeToBytes(&uncle)
-		if err != nil {
+		if err := uncle.EncodeRLP(w); err != nil {
 			return err
 		}
-		w.Write(headerEnc)
 	}
 	// encode Withdrawals
 	if rb.Withdrawals != nil {
@@ -1046,11 +1026,9 @@ func (bfs BodyForStorage) EncodeRLP(w io.Writer) error {
 		return err
 	}
 	for _, uncle := range bfs.Uncles {
-		headerEnc, err := rlp.EncodeToBytes(&uncle)
-		if err != nil {
+		if err := uncle.EncodeRLP(w); err != nil {
 			return err
 		}
-		w.Write(headerEnc)
 	}
 	// encode Withdrawals
 	// nil if pre-shanghai, empty slice if shanghai and no withdrawals in block, otherwise non-empty
@@ -1229,11 +1207,9 @@ func (bb Body) EncodeRLP(w io.Writer) error {
 		return err
 	}
 	for _, uncle := range bb.Uncles {
-		headerEnc, err := rlp.EncodeToBytes(&uncle)
-		if err != nil {
+		if err := uncle.EncodeRLP(w); err != nil {
 			return err
 		}
-		w.Write(headerEnc)
 	}
 	// encode Withdrawals
 	if bb.Withdrawals != nil {
@@ -1583,11 +1559,9 @@ func (bb Block) EncodeRLP(w io.Writer) error {
 		return err
 	}
 	// encode Header
-	headerEnc, err := rlp.EncodeToBytes(&bb.header)
-	if err != nil {
+	if err := bb.header.EncodeRLP(w); err != nil {
 		return err
 	}
-	w.Write(headerEnc)
 	// encode Transactions
 	if err := EncodeStructSizePrefix(txsLen, w, b[:]); err != nil {
 		return err
@@ -1617,11 +1591,9 @@ func (bb Block) EncodeRLP(w io.Writer) error {
 		return err
 	}
 	for _, uncle := range bb.uncles {
-		headerEnc, err := rlp.EncodeToBytes(&uncle)
-		if err != nil {
+		if err := uncle.EncodeRLP(w); err != nil {
 			return err
 		}
-		w.Write(headerEnc)
 	}
 	// encode Withdrawals
 	if bb.withdrawals != nil {

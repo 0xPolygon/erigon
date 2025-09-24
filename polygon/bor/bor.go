@@ -67,13 +67,13 @@ const inmemorySignatures = 4096 // Number of recent block signatures to keep in 
 var (
 	// Default number of blocks after which to checkpoint and reset the pending votes
 	defaultSprintLength        = map[string]uint64{"0": 64}
-	validatorHeaderBytesLength = length.Addr + 20 // address + power
+	validatorHeaderBytesLength = length.Addr + 20 // address and power
 	// maxCheckpointLength is the maximum number of blocks that can be requested for constructing a checkpoint root hash
 	maxCheckpointLength = uint64(math.Pow(2, 15))
 )
 
 // Various error messages to mark blocks invalid. These should be private to
-// prevent engine specific errors from being referenced in the remainder of the
+// prevent the engine-specific errors from being referenced in the remainder of the
 // codebase, inherently breaking if the engine is swapped out. Please put common
 // error types into the consensus package.
 var (
@@ -86,20 +86,20 @@ var (
 	// errMissingSignature is returned if a block's extra-data section doesn't seem
 	// to contain a 65 byte secp256k1 signature.
 	errMissingSignature = errors.New("extra-data 65 byte signature suffix missing")
-	// errExtraValidators is returned if non-sprint-end block contain validator data in
+	// errExtraValidators is returned if non-sprint-end block contains validator data in
 	// their extra-data fields.
 	errExtraValidators = errors.New("non-sprint-end block contains extra validator list")
 	// errInvalidSprintValidators is returned if a block contains an
-	// invalid list of validators (i.e. non divisible by 40 bytes).
+	// invalid list of validators (i.e., non-divisible by 40 bytes).
 	errInvalidSprintValidators = errors.New("invalid validator list on sprint end block")
 	// errInvalidMixDigest is returned if a block's mix digest is non-zero.
 	errInvalidMixDigest = errors.New("non-zero mix digest")
-	// errInvalidUncleHash is returned if a block contains an non-empty uncle list.
+	// errInvalidUncleHash is returned if a block contains a non-empty uncle list.
 	errInvalidUncleHash = errors.New("non empty uncle hash")
-	// errInvalidDifficulty is returned if the difficulty of a block neither 1 or 2.
+	// errInvalidDifficulty is returned if the difficulty of a block neither 1 nor 2.
 	errInvalidDifficulty = errors.New("invalid difficulty")
 	// errInvalidTimestamp is returned if the timestamp of a block is lower than
-	// the previous block's timestamp + the minimum block period.
+	// the previous block's timestamp and the minimum block period.
 	errInvalidTimestamp = errors.New("invalid timestamp")
 	errUncleDetected    = errors.New("uncles not allowed")
 )
@@ -255,7 +255,7 @@ func ValidateHeaderTime(
 		return err
 	}
 
-	// Post Bhilai HF, reject blocks form non-primary producers if they're earlier than the expected time
+	// Post Bhilai HF, reject blocks from non-primary producers if they're earlier than the expected time
 	if config.IsBhilai(header.Number.Uint64()) && succession != 0 {
 		if header.Time > uint64(now.Unix()) {
 			return fmt.Errorf("%w: expected: %s(%s), got: %s", consensus.ErrFutureBlock, time.Unix(now.Unix(), 0), now, time.Unix(int64(header.Time), 0))
@@ -269,12 +269,13 @@ func ValidateHeaderTime(
 	return nil
 }
 
-// BorRLP returns the rlp bytes which needs to be signed for the bor
-// sealing. The RLP to sign consists of the entire header apart from the 65 byte signature
+// BorRLP returns the rlp bytes which need to be signed for the bor sealing.
+// The RLP to sign consists of the entire header apart from the 65-byte signature
 // contained at the end of the extra data.
 //
 // Note, the method requires the extra data to be at least 65 bytes, otherwise it
-// panics. This is done to avoid accidentally using both forms (signature present
+// panics.
+// This is done to avoid accidentally using both forms (signature present
 // or not), which could be abused to produce different hashes for the same header.
 func BorRLP(header *types.Header, c *borcfg.BorConfig) []byte {
 	b := new(bytes.Buffer)
@@ -309,6 +310,9 @@ type Bor struct {
 	logger         log.Logger
 	rootHashCache  *lru.ARCCache[string, string]
 	headerProgress HeaderProgress
+
+	// executed in CommitStates when rules.IsStateSync is true
+	lastStateSyncData []*types.StateSyncData
 }
 
 type signer struct {
@@ -370,7 +374,7 @@ func New(
 	return c
 }
 
-// NewRo is used by the rpcdaemon and tests which need read only access to the provided data services
+// NewRo is used by the rpc daemon and tests which need read-only access to the provided data services
 func NewRo(chainConfig *chain.Config, blockReader services.FullBlockReader, logger log.Logger) *Bor {
 	// get bor config
 	borConfig := chainConfig.Bor.(*borcfg.BorConfig)
@@ -420,12 +424,12 @@ func (c *Bor) Author(header *types.Header) (common.Address, error) {
 }
 
 // VerifyHeader checks whether a header conforms to the consensus rules.
-func (c *Bor) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, seal bool) error {
+func (c *Bor) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, _ bool) error {
 	return c.verifyHeader(chain, header, nil)
 }
 
-// VerifyHeaders is similar to VerifyHeader, but verifies a batch of headers. The
-// method returns a quit channel to abort the operations and a results channel to
+// VerifyHeaders is similar to VerifyHeader but verifies a batch of headers.
+// The method returns a quit channel to abort the operations and a result channel to
 // retrieve the async verifications (the order is that of the input slice).
 func (c *Bor) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header, _ []bool) (chan<- struct{}, <-chan error) {
 	abort := make(chan struct{})
@@ -509,7 +513,8 @@ func ValidateHeaderExtraLength(extraBytes []byte) error {
 	return nil
 }
 
-// ValidateHeaderSprintValidators validates that the extra-data contains a validators list only in the last header of a sprint.
+// ValidateHeaderSprintValidators validates that the extra-data contains a validators'
+// list only in the last header of a sprint.
 func ValidateHeaderSprintValidators(header *types.Header, config *borcfg.BorConfig) error {
 	number := header.Number.Uint64()
 	isSprintEnd := config.IsSprintEnd(number)
@@ -669,7 +674,7 @@ func (c *Bor) verifySeal(chain ChainHeaderReader, header *types.Header, parents 
 
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
 // header for running the transactions on top.
-func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, state *state.IntraBlockState) error {
+func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, _ *state.IntraBlockState) error {
 	// If the block isn't a checkpoint, cast a random vote (good enough for now)
 	header.Coinbase = common.Address{}
 	header.Nonce = types.BlockNonce{}
@@ -760,7 +765,7 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, s
 
 	var succession int
 	signer := c.authorizedSigner.Load().signer
-	// if signer is not empty
+	// if the signer is not empty
 	if !bytes.Equal(signer.Bytes(), common.Address{}.Bytes()) {
 		succession, err = validatorSet.GetSignerSuccessionNumber(signer, number)
 		if err != nil {
@@ -773,9 +778,10 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, s
 	if header.Time < uint64(now.Unix()) {
 		header.Time = uint64(now.Unix())
 	} else {
-		// For primary validators, wait until the current block production window
-		// starts. This prevents bor from starting to build next block before time
-		// as we'd like to wait for new transactions. Although this change doesn't
+		// For primary validators, wait until the current block production window starts.
+		// This prevents bor from starting to build the next block before time
+		// as we'd like to wait for new transactions.
+		// Although this change doesn't
 		// need a check for hard fork as it doesn't change any consensus rules, we
 		// still keep it for safety and testing.
 		if c.config.IsBhilai(number) && succession == 0 {
@@ -787,16 +793,16 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, s
 	return nil
 }
 
-func (c *Bor) CalculateRewards(config *chain.Config, header *types.Header, uncles []*types.Header, syscall consensus.SystemCall,
+func (c *Bor) CalculateRewards(_ *chain.Config, _ *types.Header, _ []*types.Header, _ consensus.SystemCall,
 ) ([]consensus.Reward, error) {
 	return []consensus.Reward{}, nil
 }
 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
-func (c *Bor) Finalize(config *chain.Config, header *types.Header, state *state.IntraBlockState,
-	txs types.Transactions, uncles []*types.Header, r types.Receipts, withdrawals []*types.Withdrawal,
-	chain consensus.ChainReader, syscall consensus.SystemCall, skipReceiptsEval bool, logger log.Logger,
+func (c *Bor) Finalize(_ *chain.Config, header *types.Header, state *state.IntraBlockState,
+	_ types.Transactions, _ []*types.Header, _ types.Receipts, withdrawals []*types.Withdrawal,
+	chain consensus.ChainReader, syscall consensus.SystemCall, _ bool, _ log.Logger,
 ) (types.FlatRequests, error) {
 	headerNumber := header.Number.Uint64()
 
@@ -836,6 +842,8 @@ func (c *Bor) Finalize(config *chain.Config, header *types.Header, state *state.
 		return nil, err
 	}
 
+	// PIP-55: Finalize does not append txs/receipts (that’s done in FinalizeAndAssemble)
+
 	return nil, nil
 }
 
@@ -849,7 +857,7 @@ func (c *Bor) changeContractCodeIfNeeded(headerNumber uint64, state *state.Intra
 
 			for addr, account := range allocs {
 				c.logger.Trace("[bor] change contract code", "address", addr)
-				state.SetCode(addr, account.Code)
+				_ = state.SetCode(addr, account.Code)
 			}
 		}
 	}
@@ -859,9 +867,9 @@ func (c *Bor) changeContractCodeIfNeeded(headerNumber uint64, state *state.Intra
 
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
-func (c *Bor) FinalizeAndAssemble(chainConfig *chain.Config, header *types.Header, state *state.IntraBlockState,
-	txs types.Transactions, uncles []*types.Header, receipts types.Receipts, withdrawals []*types.Withdrawal,
-	chain consensus.ChainReader, syscall consensus.SystemCall, call consensus.Call, logger log.Logger,
+func (c *Bor) FinalizeAndAssemble(_ *chain.Config, header *types.Header, state *state.IntraBlockState,
+	txs types.Transactions, _ []*types.Header, receipts types.Receipts, withdrawals []*types.Withdrawal,
+	chain consensus.ChainReader, syscall consensus.SystemCall, _ consensus.Call, _ log.Logger,
 ) (*types.Block, types.FlatRequests, error) {
 	headerNumber := header.Number.Uint64()
 
@@ -877,7 +885,7 @@ func (c *Bor) FinalizeAndAssemble(chainConfig *chain.Config, header *types.Heade
 		cx := statefull.ChainContext{Chain: chain, Bor: c}
 
 		if c.blockReader != nil {
-			// Post Rio/VeBlop spans won't be committed to smart contract
+			// After Rio/VeBlop HF, spans won't be committed to smart contract
 			if !c.config.IsRio(header.Number.Uint64()) {
 				// check and commit span
 				if err := c.checkAndCommitSpan(header, syscall); err != nil {
@@ -900,13 +908,23 @@ func (c *Bor) FinalizeAndAssemble(chainConfig *chain.Config, header *types.Heade
 		return nil, nil, err
 	}
 
+	// PIP-55: append StateSyncTx and receipt post-fork if any events executed
+	if c.config.IsStateSync(headerNumber) {
+		if stateSyncData := c.popLastStateSyncData(); len(stateSyncData) > 0 {
+			stateSyncTx := &types.StateSyncTx{StateSyncData: stateSyncData}
+			txs = append(txs, stateSyncTx)
+			stateSyncReceipt := newStateSyncReceipt(stateSyncTx, receipts, state, header, txs)
+			receipts = append(receipts, stateSyncReceipt)
+		}
+	}
+
 	return types.NewBlockForAsembling(header, txs, nil, receipts, withdrawals), nil, nil
 }
 
 func (c *Bor) Initialize(config *chain.Config, chain consensus.ChainHeaderReader, header *types.Header,
-	state *state.IntraBlockState, syscall consensus.SysCallCustom, logger log.Logger, tracer *tracing.Hooks) {
+	state *state.IntraBlockState, _ consensus.SysCallCustom, _ log.Logger, _ *tracing.Hooks) {
 	if chain != nil && chain.Config().IsBhilai(header.Number.Uint64()) {
-		misc.StoreBlockHashesEip2935(header, state, config, chain)
+		_ = misc.StoreBlockHashesEip2935(header, state, config, chain)
 	}
 }
 
@@ -921,7 +939,7 @@ func (c *Bor) Authorize(currentSigner common.Address, signFn SignerFn) {
 
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
-func (c *Bor) Seal(chain consensus.ChainHeaderReader, blockWithReceipts *types.BlockWithReceipts, results chan<- *types.BlockWithReceipts, stop <-chan struct{}) error {
+func (c *Bor) Seal(_ consensus.ChainHeaderReader, blockWithReceipts *types.BlockWithReceipts, results chan<- *types.BlockWithReceipts, stop <-chan struct{}) error {
 	block := blockWithReceipts.Block
 	receipts := blockWithReceipts.Receipts
 	header := block.Header()
@@ -955,15 +973,15 @@ func (c *Bor) Seal(chain consensus.ChainHeaderReader, blockWithReceipts *types.B
 	}
 
 	var delay time.Duration
-	// Sweet, the protocol permits us to sign the block, wait for our time
+	// The protocol permits us to sign the block, wait for our time
 	if c.config.IsBhilai(header.Number.Uint64()) && successionNumber == 0 {
 		// For primary producers, set the delay to `header.Time - block time` instead of `header.Time`
-		// for early block announcement instead of waiting for full block time.
+		// for the early block announcement instead of waiting for full block time.
 		delay = time.Until(time.Unix(int64(header.Time)-int64(c.config.CalculatePeriod(number)), 0))
 	} else {
 		delay = time.Until(time.Unix(int64(header.Time), 0)) // Wait until we reach header time
 	}
-	// wiggle was already accounted for in header.Time, this is just for logging
+	// wiggle was already accounted for in the header.Time, this is just for logging
 	wiggle := time.Duration(successionNumber) * time.Duration(c.config.CalculateBackupMultiplier(number)) * time.Second
 
 	// Sign all the things!
@@ -1057,7 +1075,7 @@ func (c *Bor) IsProposer(header *types.Header) (bool, error) {
 // CalcDifficulty is the difficulty adjustment algorithm. It returns the difficulty
 // that a new block should have based on the previous blocks in the chain and the
 // current signer.
-func (c *Bor) CalcDifficulty(chain consensus.ChainHeaderReader, _, _ uint64, _ *big.Int, parentNumber uint64, parentHash, _ common.Hash, _ uint64) *big.Int {
+func (c *Bor) CalcDifficulty(_ consensus.ChainHeaderReader, _, _ uint64, _ *big.Int, parentNumber uint64, _, _ common.Hash, _ uint64) *big.Int {
 	signer := c.authorizedSigner.Load().signer
 
 	validatorSet, err := c.spanReader.Producers(context.Background(), parentNumber+1)
@@ -1074,16 +1092,16 @@ func (c *Bor) SealHash(header *types.Header) common.Hash {
 	return SealHash(header, c.config)
 }
 
-func (c *Bor) IsServiceTransaction(sender common.Address, syscall consensus.SystemCall) bool {
+func (c *Bor) IsServiceTransaction(_ common.Address, _ consensus.SystemCall) bool {
 	return false
 }
 
-// Depricated: To get the API use jsonrpc.APIList
-func (c *Bor) APIs(chain consensus.ChainHeaderReader) []rpc.API {
+// APIs method is deprecated: To get the APIs use jsonrpc.APIList
+func (c *Bor) APIs(_ consensus.ChainHeaderReader) []rpc.API {
 	return []rpc.API{}
 }
 
-// Only needed to satisfy the consensus.Engine interface
+// Close is only needed to satisfy the consensus.Engine interface
 func (c *Bor) Close() error {
 	return nil
 }
@@ -1097,8 +1115,8 @@ func (c *Bor) checkAndCommitSpan(header *types.Header, syscall consensus.SystemC
 
 	// Whenever `checkAndCommitSpan` is called for the first time, during the start of 'technically'
 	// second sprint, we need the 0th as well as the 1st span. The contract returns an empty
-	// span (i.e. all fields set to 0). Span 0 doesn't need to be committed explicitly and
-	// is committed eventually when we commit 1st span (as per the contract). The check below
+	// span (i.e., all fields set to 0). Span 0 doesn't need to be committed explicitly and
+	// is committed eventually when we commit the 1st span (as per the contract). The check below
 	// takes care of that and commits the 1st span (hence the `currentSpan.Id+1` param).
 	if currentSpan.EndBlock == 0 {
 		if err := c.fetchAndCommitSpan(uint64(currentSpan.Id+1), syscall); err != nil {
@@ -1106,7 +1124,7 @@ func (c *Bor) checkAndCommitSpan(header *types.Header, syscall consensus.SystemC
 		}
 	}
 
-	// For subsequent calls, commit the next span on the first block of the last sprint of a span
+	// For later calls, commit the next span on the first block of the span's last sprint
 	sprintLength := c.config.CalculateSprintLength(headerNumber)
 	if currentSpan.EndBlock > sprintLength && currentSpan.EndBlock-sprintLength+1 == headerNumber {
 		if err := c.fetchAndCommitSpan(uint64(currentSpan.Id+1), syscall); err != nil {
@@ -1264,12 +1282,35 @@ func (c *Bor) CommitStates(
 		}
 	}
 
+	executed := make([]*types.StateSyncData, 0, len(events))
+
 	for _, event := range events {
-		_, err := syscall(*event.To(), event.Data())
-		if err != nil {
+		if _, err := syscall(*event.To(), event.Data()); err != nil {
 			return err
 		}
+
+		var ev types.StateSyncData
+		if err := rlp.DecodeBytes(event.Data(), &ev); err != nil {
+			continue // not a state-sync event, skip
+		}
+
+		executed = append(executed, &types.StateSyncData{
+			ID:       ev.ID,
+			Contract: ev.Contract,
+			Data:     ev.Data,
+			TxHash:   ev.TxHash,
+		})
 	}
+
+	// PIP-55: if the StateSync fork is active, stash executed events
+	if c.config.IsStateSync(blockNum) {
+		if len(executed) > 0 {
+			c.lastStateSyncData = executed
+		} else {
+			c.lastStateSyncData = nil
+		}
+	}
+
 	return nil
 }
 
@@ -1313,7 +1354,7 @@ func (c *Bor) GetTransferFunc() evmtypes.TransferFunc {
 	return BorTransfer
 }
 
-// AddFeeTransferLog adds fee transfer log into state
+// AddFeeTransferLog adds fee transfer log into the state
 // Deprecating transfer log and will be removed in future fork. PLEASE DO NOT USE this transfer log going forward. Parameters won't get updated as expected going forward with EIP1559
 func AddFeeTransferLog(ibs evmtypes.IntraBlockState, sender common.Address, coinbase common.Address, result *evmtypes.ExecutionResult) {
 	output1 := result.SenderInitBalance.Clone()
@@ -1363,14 +1404,14 @@ func (c *Bor) TxDependencies(h *types.Header) [][]int {
 	return blockExtraData.TxDependencies
 }
 
-// In bor, RLP encoding of BlockExtraData will be stored in the Extra field in the header
+// BlockExtraData for bor, where RLP encoding will be stored in the Extra field of the header
 type BlockExtraData struct {
 	// Validator bytes of bor
 	ValidatorBytes []byte
 
-	// length of TxDependencies          ->   n (n = number of transactions in the block)
-	// length of TxDependencies[i]       ->   k (k = a whole number)
-	// k elements in TxDependencies[i]   ->   transaction indexes on which transaction i is dependent on
+	// length of TxDependencies -> n (n = number of transactions in the block)
+	// length of TxDependencies[i] -> k (k = a whole number)
+	// k elements in TxDependencies[i] -> transaction indexes on which transaction i is dependent on
 	TxDependencies [][]int
 }
 
@@ -1401,4 +1442,40 @@ func VerifyUncles(uncles []*types.Header) error {
 	}
 
 	return nil
+}
+
+func (c *Bor) popLastStateSyncData() []*types.StateSyncData {
+	out := c.lastStateSyncData
+	c.lastStateSyncData = nil
+	return out
+}
+
+// newStateSyncReceipt creates a new receipt for the StateSyncTx
+func newStateSyncReceipt(tx types.Transaction, prev types.Receipts, state *state.IntraBlockState, header *types.Header, txs types.Transactions) *types.Receipt {
+	// Slice logs since previous receipts
+	allLogs := state.Logs()
+	logsFromReceiptCount := countLogsFromReceipts(prev)
+	stateSyncLogs := allLogs[logsFromReceiptCount:]
+
+	r := &types.Receipt{
+		Type:              tx.Type(),
+		Status:            types.ReceiptStatusSuccessful,
+		CumulativeGasUsed: header.GasUsed,
+		GasUsed:           0,
+		TxHash:            tx.Hash(),
+		Logs:              stateSyncLogs,
+		BlockNumber:       header.Number,
+		TransactionIndex:  uint(len(txs) - 1),
+	}
+	r.Bloom = types.CreateBloom(types.Receipts{r})
+	return r
+}
+
+// countLogsFromReceipts counts the total number of logs in the given receipts.
+func countLogsFromReceipts(receipts types.Receipts) int {
+	count := 0
+	for _, r := range receipts {
+		count += len(r.Logs)
+	}
+	return count
 }

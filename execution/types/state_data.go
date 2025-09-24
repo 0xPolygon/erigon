@@ -18,10 +18,10 @@ package types
 
 import "github.com/erigontech/erigon-lib/common"
 
-// StateSyncData represents state received from Ethereum Blockchain
+// StateSyncData represents state received from Ethereum Blockchain and stored in L2 via the StateSync mechanism.
 type StateSyncData struct {
 	ID       uint64
 	Contract common.Address
-	Data     string
-	TxHash   common.Hash
+	Data     []byte
+	TxHash   common.Hash // L1 TxHash
 }

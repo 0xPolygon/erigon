@@ -9,11 +9,11 @@ env:
   TEST_CHAIN: "mainnet"
   BUILDER_IMAGE: "golang:1.24-bookworm"
   DOCKER_BASE_IMAGE: "debian:12-slim"
-  APP_REPO: "erigontech/erigon"
+  APP_REPO: "0xpolygon/erigon"
   PACKAGE: "github.com/erigontech/erigon"
   BINARIES: "erigon downloader evm caplin capcli integration rpcdaemon sentry txpool"
-  DOCKERHUB_REPOSITORY: "erigontech/erigon"
-  DOCKERHUB_REPOSITORY_DEV: "erigontech/dev-erigon"
+  DOCKERHUB_REPOSITORY: "0xpolygon/erigon"
+  DOCKERHUB_REPOSITORY_DEV: "0xpolygon/dev-erigon"
   DOCKERFILE_PATH: "Dockerfile"
   LABEL_DESCRIPTION: "Erigon is an implementation of Ethereum (execution layer with embeddable consensus layer), on the efficiency frontier. Archive Node by default."
 
@@ -102,8 +102,8 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567  ## v3.3.0
         with:
-          username: ${{ secrets.ORG_DOCKERHUB_ERIGONTECH_USERNAME }}
-          password: ${{ secrets.ORG_DOCKERHUB_ERIGONTECH_TOKEN }}
+          username: ${{ secrets.DOCKERHUB }}
+          password: ${{ secrets.DOCKERHUB_KEY }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -302,7 +302,7 @@ jobs:
     if: always() && contains(needs.build-release.result, 'success') && !contains(needs.test-release.result, 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    name: Docker image        
+    name: Docker image
 
     steps:
 
@@ -332,8 +332,8 @@ jobs:
     - name: Login to Docker Hub
       uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567  ## v3.3.0
       with:
-        username: ${{ secrets.ORG_DOCKERHUB_ERIGONTECH_USERNAME }}
-        password: ${{ secrets.ORG_DOCKERHUB_ERIGONTECH_TOKEN }}
+        username: ${{ secrets.DOCKERHUB }}
+        password: ${{ secrets.DOCKERHUB_KEY }}
 
     - name: Push multi-platform docker images (${{ env.BUILD_VERSION }}${{ inputs.publish_latest_tag == true && ' and latest tag'}}) in case perform_release is true
       if: ${{ inputs.perform_release }}

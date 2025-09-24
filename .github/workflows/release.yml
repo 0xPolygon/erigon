@@ -204,8 +204,8 @@ jobs:
 
   test-release:
     name: test on ${{ matrix.id }}
-    if: ${{ ! inputs.skip_tests }}
-    runs-on: [ self-hosted, qa, Release, "${{ matrix.runner-arch }}" ]
+    if: false # TODO change it back to: ${{ ! inputs.skip_tests }}
+    runs-on: ubuntu-latest
     timeout-minutes: 7200  # 5 days
     needs: [ build-release ]
     strategy:

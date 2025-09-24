@@ -62,6 +62,9 @@ type txJSON struct {
 	Commitments BlobKzgs  `json:"commitments,omitempty"`
 	Proofs      KZGProofs `json:"proofs,omitempty"`
 
+	// StateSync transaction fields:
+	StateSyncData *[]*StateSyncData `json:"stateSyncData,omitempty"`
+
 	// Only used for encoding:
 	Hash common.Hash `json:"hash"`
 }
@@ -209,6 +212,35 @@ func (tx *BlobTxWrapper) MarshalJSON() ([]byte, error) {
 	return json.Marshal(enc)
 }
 
+// MarshalJSON for StateSyncTx serializes it as a zero-valued, unsigned system transaction.
+// This ensures eth_getBlockBy* returns it in the transaction list.
+func (tx *StateSyncTx) MarshalJSON() ([]byte, error) {
+	var enc txJSON
+	enc.Hash = tx.Hash()
+	enc.Type = hexutil.Uint64(tx.Type())
+
+	zero := hexutil.Uint64(0)
+	zeroBig := (*hexutil.Big)(big.NewInt(0))
+
+	enc.Nonce = &zero
+	enc.Gas = &zero
+	enc.GasPrice = zeroBig
+	enc.MaxFeePerGas = zeroBig
+	enc.MaxPriorityFeePerGas = zeroBig
+	enc.Value = zeroBig
+	empty := hexutil.Bytes{}
+	enc.Data = &empty
+	zeroAddr := common.Address{}
+	enc.To = &zeroAddr
+
+	// include state sync payload
+	if len(tx.StateSyncData) > 0 {
+		enc.StateSyncData = &tx.StateSyncData
+	}
+
+	return json.Marshal(&enc)
+}
+
 func UnmarshalTransactionFromJSON(input []byte) (Transaction, error) {
 	var p fastjson.Parser
 	v, err := p.ParseBytes(input)
@@ -250,6 +282,12 @@ func UnmarshalTransactionFromJSON(input []byte) (Transaction, error) {
 		return tx, nil
 	case SetCodeTxType:
 		tx := &SetCodeTransaction{}
+		if err = tx.UnmarshalJSON(input); err != nil {
+			return nil, err
+		}
+		return tx, nil
+	case StateSyncTxType:
+		tx := &StateSyncTx{}
 		if err = tx.UnmarshalJSON(input); err != nil {
 			return nil, err
 		}
@@ -623,4 +661,26 @@ func UnmarshalBlobTxJSON(input []byte) (Transaction, error) {
 		return nil, err
 	}
 	return &btx, nil
+}
+
+// UnmarshalJSON for StateSyncTx decodes from the generic txJSON wrapper.
+// Unlike user-submitted txs, StateSyncTx has no nonce/gas/value/signature.
+// We only restore StateSyncData if present.
+func (tx *StateSyncTx) UnmarshalJSON(input []byte) error {
+	var dec txJSON
+	if err := json.Unmarshal(input, &dec); err != nil {
+		return err
+	}
+	if byte(dec.Type) != StateSyncTxType {
+		return fmt.Errorf("invalid type for StateSyncTx: %v", dec.Type)
+	}
+
+	// Parse the StateSyncData if present in JSON
+	if dec.StateSyncData != nil {
+		tx.StateSyncData = *dec.StateSyncData
+	} else {
+		tx.StateSyncData = nil
+	}
+
+	return nil
 }

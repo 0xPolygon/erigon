@@ -47,7 +47,7 @@ on:
 jobs:
 
   build-release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     timeout-minutes: 60
     name: Create git tag, build and publish Release Artifacts
     outputs:
@@ -197,7 +197,7 @@ jobs:
   test-release:
     name: test on ${{ matrix.id }}
     if: ${{ ! inputs.skip_tests }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     timeout-minutes: 2800
     needs: [ build-release ]
     strategy:
@@ -246,7 +246,7 @@ jobs:
   publish-docker-image:
     needs: [ build-release, test-release ]
     if: always() && contains(needs.build-release.result, 'success') && !contains(needs.test-release.result, 'failure')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     timeout-minutes: 30
     name: Docker image
 
@@ -280,7 +280,7 @@ jobs:
   publish-release:
     needs: [ build-debian-pkg, publish-docker-image, build-release ]
     if: always() && contains(needs.build-release.result, 'success') && contains(needs.build-debian-pkg.result, 'success') && contains(needs.publish-docker-image.result, 'success')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -310,7 +310,7 @@ jobs:
     name: "In case of failure: remove remote git tag pointing to the new version."
     needs: [ publish-release, build-release, test-release, build-debian-pkg, publish-docker-image ]
     if: always() && inputs.perform_release && !contains(needs.publish-release.result, 'success')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
 
     steps:
       - name: Checkout git repository ${{ env.APP_REPO }} reference ${{ inputs.checkout_ref }}

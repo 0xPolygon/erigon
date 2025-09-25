@@ -277,10 +277,10 @@ func (g *Generator) GetReceipt(ctx context.Context, cfg *chain.Config, tx kv.Tem
 	return receipt, nil
 }
 
+// GetReceipts regenerates or loads receipts for a given block (including state-sync synthetic receipt if needed).
 func (g *Generator) GetReceipts(ctx context.Context, cfg *chain.Config, tx kv.TemporalTx, block *types.Block) (types.Receipts, error) {
 	blockHash := block.Hash()
 
-	//if can find in DB - then don't need store in `receiptsCache` - because DB it's already kind-of cache (small, mmaped, hot file)
 	var receiptsFromDB types.Receipts
 	receipts := make(types.Receipts, len(block.Transactions()))
 	defer func() {
@@ -291,8 +291,9 @@ func (g *Generator) GetReceipts(ctx context.Context, cfg *chain.Config, tx kv.Te
 		}
 	}()
 
-	mu := g.blockExecMutex.lock(blockHash) // parallel requests of same blockNum will executed only once
+	mu := g.blockExecMutex.lock(blockHash) // parallel requests of the same blockNum will be executed only once
 	defer g.blockExecMutex.unlock(mu, blockHash)
+
 	if receipts, ok := g.receiptsCache.Get(blockHash); ok {
 		return receipts, nil
 	}
@@ -354,6 +355,13 @@ func (g *Generator) GetReceipts(ctx context.Context, cfg *chain.Config, tx kv.Te
 
 		if dbg.AssertEnabled && receiptsFromDB != nil {
 			g.assertEqualReceipts(receipt, receiptsFromDB[i])
+		}
+	}
+
+	// PIP-55: state sync addition
+	if ssTx, ok := block.Transactions()[len(block.Transactions())-1].(*types.StateSyncTx); ok {
+		if fromDB, err := rawdb.ReadStateSyncReceiptByHash(tx, block, g.txNumReader, ssTx.Hash()); err == nil && fromDB != nil {
+			receipts = append(receipts, fromDB)
 		}
 	}
 

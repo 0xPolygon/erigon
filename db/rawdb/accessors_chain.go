@@ -1287,6 +1287,25 @@ func ReadReceiptsCacheV2(tx kv.TemporalTx, block *types.Block, txNumReader rawdb
 	return res, nil
 }
 
+// ReadStateSyncReceiptByHash reads a state-sync receipt by its transaction hash within a specific block
+func ReadStateSyncReceiptByHash(
+	tx kv.TemporalTx,
+	block *types.Block,
+	txNumReader rawdbv3.TxNumsReader,
+	txHash common.Hash,
+) (*types.Receipt, error) {
+	receipts, err := ReadReceiptsCacheV2(tx, block, txNumReader)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range receipts {
+		if r.Type == types.StateSyncTxType && r.TxHash == txHash {
+			return r, nil
+		}
+	}
+	return nil, fmt.Errorf("state-sync receipt not found for tx %x in block %d", txHash[:], block.NumberU64())
+}
+
 func WriteReceiptCacheV2(tx kv.TemporalPutDel, receipt *types.Receipt, txNum uint64) error {
 	var toWrite []byte
 

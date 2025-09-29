@@ -302,15 +302,13 @@ func TestReorgLongBlocks(t *testing.T) { testReorgLong(t) }
 
 func testReorgLong(t *testing.T) {
 	t.Parallel()
-	// FIXME
-	// testReorg(t, []int64{0, 0, -9}, []int64{0, 0, 0, -9}, 393280)
+	testReorg(t, []int64{0, 0, -9}, []int64{0, 0, 0, -9}, 393280)
 }
 
 // Tests that reorganising a short difficult chain after a long easy one
 // overwrites the canonical numbers and links in the database.
 func TestReorgShortBlocks(t *testing.T) {
-	// FIXME
-	//testReorgShort(t)
+	testReorgShort(t)
 }
 
 func testReorgShort(t *testing.T) {

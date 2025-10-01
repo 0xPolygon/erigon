@@ -66,7 +66,7 @@ func (tx *StateSyncTx) GetTo() *common.Address {
 func (tx *StateSyncTx) AsMessage(_ Signer, baseFee *big.Int, rules *chain.Rules) (*Message, error) {
 	if !rules.IsStateSync {
 		// TODO change to better name when we have a hard fork for this
-		return nil, errors.New("pip-55: StateSync typed tx requires StateSync hard fork")
+		return nil, errors.New("StateSync typed tx requires StateSync hard fork")
 	}
 	msg := Message{
 		nonce:      0,
@@ -226,7 +226,7 @@ func (tx *StateSyncTx) encode(buf *bytes.Buffer) error {
 	if tx == nil {
 		return errors.New("nil StateSyncTx")
 	}
-	// Validate ascending and contiguous IDs as per PIP-55
+	// Validate ascending and contiguous IDs as per PIP-74
 	var prev uint64
 	for i, d := range tx.StateSyncData {
 		if d == nil {
@@ -253,7 +253,7 @@ func (tx *StateSyncTx) decode(b []byte) error {
 	if err := rlp.DecodeBytes(b, &dec); err != nil {
 		return err
 	}
-	// Validate ascending and contiguous IDs as per PIP-55
+	// Validate ascending and contiguous IDs as per PIP-74
 	if len(dec) > 0 {
 		prev := dec[0].ID
 		for i := 1; i < len(dec); i++ {

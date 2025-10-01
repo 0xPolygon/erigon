@@ -842,7 +842,7 @@ func (c *Bor) Finalize(_ *chain.Config, header *types.Header, state *state.Intra
 		return nil, err
 	}
 
-	// PIP-55: Finalize does not append txs/receipts (that’s done in FinalizeAndAssemble)
+	// PIP-74: Finalize does not append txs/receipts (that’s done in FinalizeAndAssemble)
 
 	return nil, nil
 }
@@ -908,7 +908,7 @@ func (c *Bor) FinalizeAndAssemble(_ *chain.Config, header *types.Header, state *
 		return nil, nil, err
 	}
 
-	// PIP-55: append StateSyncTx and receipt post-fork if any events executed
+	// PIP-74: append StateSyncTx and receipt post-fork if any events executed
 	if c.config.IsStateSync(headerNumber) {
 		if stateSyncData := c.popLastStateSyncData(); len(stateSyncData) > 0 {
 			stateSyncTx := &types.StateSyncTx{StateSyncData: stateSyncData}
@@ -1302,7 +1302,7 @@ func (c *Bor) CommitStates(
 		})
 	}
 
-	// PIP-55: if the StateSync fork is active, stash executed events
+	// PIP-74: if the StateSync fork is active, stash executed events
 	if c.config.IsStateSync(blockNum) {
 		if len(executed) > 0 {
 			c.lastStateSyncData = executed

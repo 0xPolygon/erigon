@@ -358,7 +358,7 @@ func (g *Generator) GetReceipts(ctx context.Context, cfg *chain.Config, tx kv.Te
 		}
 	}
 
-	// PIP-55: state sync addition
+	// PIP-74: state sync addition
 	txs := block.Transactions()
 	if len(txs) > 0 {
 		if ssTx, ok := block.Transactions()[len(block.Transactions())-1].(*types.StateSyncTx); ok {

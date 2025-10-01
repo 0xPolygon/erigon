@@ -827,9 +827,10 @@ func (c *Bor) Finalize(_ *chain.Config, header *types.Header, state *state.Intra
 			// Commit States
 			// Unlike `FinalizeAndAssemble`, we do not use the returned StateSyncData here,
 			// since receipts/tx assembly happens only in FinalizeAndAssemble.
+			c.logger.Info(">>>>> FINALIZE: Committing states for block", "number", header.Number, "hash", header.Hash())
 			if _, err := c.CommitStates(header, cx, syscall, false); err != nil {
 				err := fmt.Errorf("Finalize.CommitStates: %w", err)
-				c.logger.Error("[bor] Error while committing states", "err", err)
+				c.logger.Error(">>>>> [bor] Error while committing states", "err", err)
 				return nil, err
 			}
 		}
@@ -920,11 +921,23 @@ func (c *Bor) FinalizeAndAssemble(
 	}
 
 	// PIP-74: append StateSyncTx and receipt post-fork if any events executed
-	if c.config.IsStateSync(headerNumber) && len(execStateSync) > 0 {
-		stateSyncTx := &types.StateSyncTx{StateSyncData: execStateSync}
-		txs = append(txs, stateSyncTx)
-		stateSyncReceipt := newStateSyncReceipt(stateSyncTx, receipts, state, header, txs)
-		receipts = append(receipts, stateSyncReceipt)
+	c.logger.Info(">>>>> FinalizeAndAssemble: Assembling block", "number", header.Number, "hash", header.Hash(), "TxCount", len(txs), "StateSyncCount", len(execStateSync), "ReceiptCount", len(receipts))
+	if c.config.IsStateSync(headerNumber) {
+		c.logger.Info(">>>>> FinalizeAndAssemble: IsStateSync YES")
+		if len(execStateSync) > 0 {
+			c.logger.Info(">>>>> FinalizeAndAssemble: execStateSync length > 0")
+			c.logger.Info(">>>>> FinalizeAndAssemble: Appending state sync txs", "count", len(execStateSync))
+			stateSyncTx := &types.StateSyncTx{StateSyncData: execStateSync}
+			txs = append(txs, stateSyncTx)
+			c.logger.Info(">>>>> FinalizeAndAssemble: About to call newStateSyncReceipt")
+			stateSyncReceipt := newStateSyncReceipt(stateSyncTx, receipts, state, header, txs)
+			c.logger.Info(">>>>> FinalizeAndAssemble: Called newStateSyncReceipt", "receipt", stateSyncReceipt)
+			receipts = append(receipts, stateSyncReceipt)
+		} else {
+			c.logger.Info(">>>>> FinalizeAndAssemble: execStateSync length == 0")
+		}
+	} else {
+		c.logger.Info(">>>>> FinalizeAndAssemble: IsStateSync NO")
 	}
 
 	return types.NewBlockForAsembling(header, txs, nil, receipts, withdrawals), nil, nil
@@ -1294,6 +1307,7 @@ func (c *Bor) CommitStates(
 
 	execStateSync := make([]*types.StateSyncData, 0, len(events))
 
+	c.logger.Info(">>>>> Committing states", "block", blockNum, "events", len(events))
 	for _, event := range events {
 		if _, err := syscall(*event.To(), event.Data()); err != nil {
 			return nil, err
@@ -1304,6 +1318,7 @@ func (c *Bor) CommitStates(
 			continue // not a state-sync event, skip
 		}
 
+		c.logger.Info(">>>>> Executed state sync event", "id", ev.ID, "contract", ev.Contract.Hex(), "txHash", ev.TxHash.Hex())
 		execStateSync = append(execStateSync, &types.StateSyncData{
 			ID:       ev.ID,
 			Contract: ev.Contract,

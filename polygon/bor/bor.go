@@ -310,9 +310,6 @@ type Bor struct {
 	logger         log.Logger
 	rootHashCache  *lru.ARCCache[string, string]
 	headerProgress HeaderProgress
-
-	// executed in CommitStates when rules.IsStateSync is true
-	lastStateSyncData []*types.StateSyncData
 }
 
 type signer struct {
@@ -828,8 +825,10 @@ func (c *Bor) Finalize(_ *chain.Config, header *types.Header, state *state.Intra
 				}
 			}
 
-			// commit states
-			if err := c.CommitStates(header, cx, syscall, false); err != nil {
+			// Commit States
+			// Unlike `FinalizeAndAssemble`, we do not use the returned StateSyncData here,
+			// since receipts/tx assembly happens only in FinalizeAndAssemble.
+			if _, err := c.CommitStates(header, cx, syscall, false); err != nil {
 				err := fmt.Errorf("Finalize.CommitStates: %w", err)
 				c.logger.Error("[bor] Error while committing states", "err", err)
 				return nil, err
@@ -867,9 +866,18 @@ func (c *Bor) changeContractCodeIfNeeded(headerNumber uint64, state *state.Intra
 
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
-func (c *Bor) FinalizeAndAssemble(_ *chain.Config, header *types.Header, state *state.IntraBlockState,
-	txs types.Transactions, _ []*types.Header, receipts types.Receipts, withdrawals []*types.Withdrawal,
-	chain consensus.ChainReader, syscall consensus.SystemCall, _ consensus.Call, _ log.Logger,
+func (c *Bor) FinalizeAndAssemble(
+	_ *chain.Config,
+	header *types.Header,
+	state *state.IntraBlockState,
+	txs types.Transactions,
+	_ []*types.Header,
+	receipts types.Receipts,
+	withdrawals []*types.Withdrawal,
+	chain consensus.ChainReader,
+	syscall consensus.SystemCall,
+	_ consensus.Call,
+	_ log.Logger,
 ) (*types.Block, types.FlatRequests, error) {
 	headerNumber := header.Number.Uint64()
 
@@ -880,6 +888,8 @@ func (c *Bor) FinalizeAndAssemble(_ *chain.Config, header *types.Header, state *
 	if header.RequestsHash != nil {
 		return nil, nil, consensus.ErrUnexpectedRequests
 	}
+
+	var execStateSync []*types.StateSyncData
 
 	if c.config.IsSprintStart(headerNumber) {
 		cx := statefull.ChainContext{Chain: chain, Bor: c}
@@ -894,8 +904,10 @@ func (c *Bor) FinalizeAndAssemble(_ *chain.Config, header *types.Header, state *
 					return nil, nil, err
 				}
 			}
-			// commit states
-			if err := c.CommitStates(header, cx, syscall, true); err != nil {
+			// commit states, get executed state sync data
+			var err error
+			execStateSync, err = c.CommitStates(header, cx, syscall, true)
+			if err != nil {
 				err := fmt.Errorf("FinalizeAndAssemble.CommitStates: %w", err)
 				c.logger.Error("[bor] committing states", "err", err)
 				return nil, nil, err
@@ -909,13 +921,11 @@ func (c *Bor) FinalizeAndAssemble(_ *chain.Config, header *types.Header, state *
 	}
 
 	// PIP-74: append StateSyncTx and receipt post-fork if any events executed
-	if c.config.IsStateSync(headerNumber) {
-		if stateSyncData := c.popLastStateSyncData(); len(stateSyncData) > 0 {
-			stateSyncTx := &types.StateSyncTx{StateSyncData: stateSyncData}
-			txs = append(txs, stateSyncTx)
-			stateSyncReceipt := newStateSyncReceipt(stateSyncTx, receipts, state, header, txs)
-			receipts = append(receipts, stateSyncReceipt)
-		}
+	if c.config.IsStateSync(headerNumber) && len(execStateSync) > 0 {
+		stateSyncTx := &types.StateSyncTx{StateSyncData: execStateSync}
+		txs = append(txs, stateSyncTx)
+		stateSyncReceipt := newStateSyncReceipt(stateSyncTx, receipts, state, header, txs)
+		receipts = append(receipts, stateSyncReceipt)
 	}
 
 	return types.NewBlockForAsembling(header, txs, nil, receipts, withdrawals), nil, nil
@@ -1232,12 +1242,13 @@ func (c *Bor) getHeaderByNumber(ctx context.Context, tx kv.Tx, number uint64) (*
 }
 
 // CommitStates commit states
+// It also executes the state-sync-related events and returns those as StateSyncData
 func (c *Bor) CommitStates(
 	header *types.Header,
 	chain statefull.ChainContext,
 	syscall consensus.SystemCall,
 	fetchEventsWithinTime bool,
-) error {
+) ([]*types.StateSyncData, error) {
 	blockNum := header.Number.Uint64()
 	var events []*types.Message
 	var err error
@@ -1247,7 +1258,7 @@ func (c *Bor) CommitStates(
 		sprintLength := c.config.CalculateSprintLength(blockNum)
 
 		if blockNum < sprintLength {
-			return nil
+			return nil, nil
 		}
 
 		prevSprintStart := chain.Chain.GetHeaderByNumber(blockNum - sprintLength)
@@ -1273,20 +1284,20 @@ func (c *Bor) CommitStates(
 
 		events, err = c.bridgeReader.EventsWithinTime(ctx, timeFrom, timeTo)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	} else {
 		events, err = c.bridgeReader.Events(ctx, header.Hash(), blockNum)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	executed := make([]*types.StateSyncData, 0, len(events))
+	execStateSync := make([]*types.StateSyncData, 0, len(events))
 
 	for _, event := range events {
 		if _, err := syscall(*event.To(), event.Data()); err != nil {
-			return err
+			return nil, err
 		}
 
 		var ev types.StateSyncData
@@ -1294,7 +1305,7 @@ func (c *Bor) CommitStates(
 			continue // not a state-sync event, skip
 		}
 
-		executed = append(executed, &types.StateSyncData{
+		execStateSync = append(execStateSync, &types.StateSyncData{
 			ID:       ev.ID,
 			Contract: ev.Contract,
 			Data:     ev.Data,
@@ -1302,16 +1313,9 @@ func (c *Bor) CommitStates(
 		})
 	}
 
-	// PIP-74: if the StateSync fork is active, stash executed events
-	if c.config.IsStateSync(blockNum) {
-		if len(executed) > 0 {
-			c.lastStateSyncData = executed
-		} else {
-			c.lastStateSyncData = nil
-		}
-	}
-
-	return nil
+	// Return the executed events
+	// This is harmless pre-fork, because the caller will decide whether to use it or not, based on HF status.
+	return execStateSync, nil
 }
 
 // BorTransfer transfer in Bor
@@ -1442,12 +1446,6 @@ func VerifyUncles(uncles []*types.Header) error {
 	}
 
 	return nil
-}
-
-func (c *Bor) popLastStateSyncData() []*types.StateSyncData {
-	out := c.lastStateSyncData
-	c.lastStateSyncData = nil
-	return out
 }
 
 // newStateSyncReceipt creates a new receipt for the StateSyncTx

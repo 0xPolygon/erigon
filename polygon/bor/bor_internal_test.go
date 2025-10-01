@@ -106,7 +106,7 @@ func TestCommitStatesIndore(t *testing.T) {
 		return nil, nil
 	}
 
-	err := bor.CommitStates(header, statefull.ChainContext{Chain: cr}, syscall, true)
+	_, err := bor.CommitStates(header, statefull.ChainContext{Chain: cr}, syscall, true)
 	require.NoError(t, err)
 	require.Equal(t, 1, called)
 }

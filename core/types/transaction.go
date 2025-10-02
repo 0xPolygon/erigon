@@ -53,6 +53,7 @@ const (
 	DynamicFeeTxType
 	BlobTxType
 	SetCodeTxType
+	StateSyncTxType = 127
 )
 
 // Transaction is an Ethereum transaction.
@@ -105,7 +106,8 @@ type TransactionMisc struct {
 	from atomic.Pointer[libcommon.Address]
 }
 
-// RLP-marshalled legacy transactions and binary-marshalled (not wrapped into an RLP string) typed (EIP-2718) transactions
+// BinaryTransactions is the RLP-marshaled legacy transactions and binary-marshaled
+// (not wrapped into an RLP string) typed (EIP-2718) transactions
 type BinaryTransactions [][]byte
 
 func (t BinaryTransactions) Len() int {
@@ -177,7 +179,7 @@ func DecodeTransaction(data []byte) (Transaction, error) {
 	return tx, nil
 }
 
-// Parse transaction without envelope.
+// UnmarshalTransactionFromBinary parses the transaction without the envelope.
 func UnmarshalTransactionFromBinary(data []byte, blobTxnsAreWrappedWithBlobs bool) (Transaction, error) {
 	if len(data) <= 1 {
 		return nil, fmt.Errorf("short input: %v", len(data))
@@ -197,6 +199,8 @@ func UnmarshalTransactionFromBinary(data []byte, blobTxnsAreWrappedWithBlobs boo
 		}
 	case SetCodeTxType:
 		t = &SetCodeTransaction{}
+	case StateSyncTxType:
+		t = &StateSyncTx{}
 	default:
 		if data[0] >= 0x80 {
 			// txn is type legacy which is RLP encoded
@@ -213,8 +217,8 @@ func UnmarshalTransactionFromBinary(data []byte, blobTxnsAreWrappedWithBlobs boo
 	return t, nil
 }
 
-// Removes everything but the payload body from blob tx and prepends 0x3 at the beginning - no copy
-// Doesn't change non-blob tx
+// UnwrapTxPlayloadRlp removes everything but the payload body from blob tx and prepends 0x3 at the beginning - no copy
+// It doesn't change non-blob tx
 func UnwrapTxPlayloadRlp(blobTxRlp []byte) ([]byte, error) {
 	if blobTxRlp[0] != BlobTxType {
 		return blobTxRlp, nil

@@ -45,7 +45,6 @@ type BorConfig struct {
 	AhmedabadBlock             *big.Int                  `json:"ahmedabadBlock"`             // Ahmedabad switch block (nil = no fork, 0 = already on Ahmedabad)
 	BhilaiBlock                *big.Int                  `json:"bhilaiBlock"`                // Bhilai switch block (nil = no fork, 0 = already on Ahmedabad)
 	RioBlock                   *big.Int                  `json:"rioBlock"`                   // Rio switch block (nil = no fork, 0 = already on Rio)
-	StateSyncBlock             *big.Int                  `json:"stateSyncBlock"`             // StateSync switch block (nil = no fork, 0 = already on StateSync) // TODO define better name
 	StateSyncConfirmationDelay map[string]uint64         `json:"stateSyncConfirmationDelay"` // StateSync Confirmation Delay, in seconds, to calculate `to`
 	Coinbase                   map[string]common.Address `json:"coinbase"`                   // coinbase address
 	sprints                    sprints
@@ -189,14 +188,6 @@ func (c *BorConfig) GetRioBlock() *big.Int {
 
 func (c *BorConfig) CalculateStateSyncDelay(number uint64) uint64 {
 	return chain.ConfigValueLookup(common.ParseMapKeysIntoUint64(c.StateSyncConfirmationDelay), number)
-}
-
-func (c *BorConfig) IsStateSync(number uint64) bool {
-	return isForked(c.StateSyncBlock, number)
-}
-
-func (c *BorConfig) GetStateSyncBlock() *big.Int {
-	return c.StateSyncBlock
 }
 
 func (c *BorConfig) CalculateCoinbase(number uint64) common.Address {

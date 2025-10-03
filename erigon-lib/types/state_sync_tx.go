@@ -201,6 +201,7 @@ func (tx *StateSyncTx) Unwrap() Transaction {
 	return tx
 }
 
+//nolint:unused
 func (tx *StateSyncTx) copy() StateSyncTx {
 	if tx == nil {
 		return StateSyncTx{}
@@ -222,14 +223,17 @@ func (tx *StateSyncTx) copy() StateSyncTx {
 
 // accessors for innerTx.
 
+//nolint:unused
 func (tx *StateSyncTx) effectiveGasPrice(_ *big.Int, _ *big.Int) *big.Int {
 	return big.NewInt(0)
 }
 
+//nolint:unused
 func (tx *StateSyncTx) rawSignatureValues() (v, r, s *big.Int) {
 	panic("no signatures on StateSyncTx")
 }
 
+//nolint:unused
 func (tx *StateSyncTx) setSignatureValues(_, _, _, _ *big.Int) {
 	panic("no sigs on StateSyncTx")
 }
@@ -283,6 +287,7 @@ func (tx *StateSyncTx) decode(b []byte) error {
 	return nil
 }
 
+//nolint:unused
 func (tx *StateSyncTx) sigHash(_ *big.Int) common.Hash {
 	panic("StateSyncTx has no sigHash")
 }

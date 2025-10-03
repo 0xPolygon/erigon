@@ -194,7 +194,7 @@ func (t *StateTest) RunNoVerify(tx kv.TemporalRwTx, subtest StateSubtest, vmconf
 		return nil, common.Hash{}, 0, testutil.UnsupportedForkError{Name: subtest.Fork}
 	}
 	vmconfig.ExtraEips = eips
-	block, _, err := core.GenesisToBlock(t.genesis(config), dirs, log.Root())
+	block, _, _, err := core.GenesisToBlock(t.genesis(config), dirs, log.Root())
 	if err != nil {
 		return nil, common.Hash{}, 0, testutil.UnsupportedForkError{Name: subtest.Fork}
 	}

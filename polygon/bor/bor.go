@@ -1166,7 +1166,6 @@ func (c *Bor) FinalizeAndAssemble(
 	syscall consensus.SystemCall,
 	_ consensus.Call,
 	logger log.Logger) (*types.Block, types.Receipts, types.FlatRequests, error) {
-	// stateSyncData := []*types.StateSyncData{}
 
 	headerNumber := header.Number.Uint64()
 

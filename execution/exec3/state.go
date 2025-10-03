@@ -224,7 +224,7 @@ func (rw *Worker) RunTxTaskNoLock(txTask *state.TxTask, isMining, skipPostEvalua
 		if txTask.BlockNum == 0 {
 
 			//fmt.Printf("txNum=%d, blockNum=%d, Genesis\n", txTask.TxNum, txTask.BlockNum)
-			_, ibs, err = core.GenesisToBlock(rw.genesis, rw.dirs, rw.logger)
+			_, _, ibs, err = core.GenesisToBlock(rw.genesis, rw.dirs, rw.logger)
 			if err != nil {
 				panic(err)
 			}
@@ -257,7 +257,7 @@ func (rw *Worker) RunTxTaskNoLock(txTask *state.TxTask, isMining, skipPostEvalua
 		}
 
 		if isMining {
-			_, _, err = rw.engine.FinalizeAndAssemble(cc, types.CopyHeader(header), ibs, txTask.Txs, txTask.Uncles, txTask.BlockReceipts, txTask.Withdrawals, rw.chain, syscall, nil, rw.logger)
+			_, _, _, err = rw.engine.FinalizeAndAssemble(cc, types.CopyHeader(header), ibs, txTask.Txs, txTask.Uncles, txTask.BlockReceipts, txTask.Withdrawals, rw.chain, syscall, nil, rw.logger)
 		} else {
 			_, err = rw.engine.Finalize(cc, types.CopyHeader(header), ibs, txTask.Txs, txTask.Uncles, txTask.BlockReceipts, txTask.Withdrawals, rw.chain, syscall, skipPostEvaluation, rw.logger)
 		}

@@ -1003,7 +1003,7 @@ func (bb *Body) DecodeRLP(s *rlp.Stream) error {
 // The values of TxHash, UncleHash, ReceiptHash, Bloom, and WithdrawalHash
 // in the header are ignored and set to the values derived from
 // the given txs, uncles, receipts, and withdrawals.
-func NewBlock(header *Header, txs []Transaction, uncles []*Header, receipts []*Receipt, withdrawals []*Withdrawal) *Block {
+func NewBlock(header *Header, txs []Transaction, uncles []*Header, receipts []*Receipt, withdrawals []*Withdrawal) (*Block, Receipts) {
 	b := &Block{header: CopyHeader(header)}
 
 	// TODO: panic if len(txs) != len(receipts)
@@ -1050,14 +1050,14 @@ func NewBlock(header *Header, txs []Transaction, uncles []*Header, receipts []*R
 
 	b.header.ParentBeaconBlockRoot = header.ParentBeaconBlockRoot
 	b.header.mutable = false //Force immutability of block and header. Use `NewBlockForAsembling` if you need mutable block
-	return b
+	return b, receipts
 }
 
 // NewBlockForAsembling - creating new block - which allow mutation of fileds. Use it for block-assembly
-func NewBlockForAsembling(header *Header, txs []Transaction, uncles []*Header, receipts []*Receipt, withdrawals []*Withdrawal) *Block {
-	b := NewBlock(header, txs, uncles, receipts, withdrawals)
+func NewBlockForAsembling(header *Header, txs []Transaction, uncles []*Header, receipts []*Receipt, withdrawals []*Withdrawal) (*Block, Receipts) {
+	b, receipts := NewBlock(header, txs, uncles, receipts, withdrawals)
 	b.header.mutable = true
-	return b
+	return b, receipts
 }
 
 // NewBlockFromStorage like NewBlock but used to create Block object when read it from DB

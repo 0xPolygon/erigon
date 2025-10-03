@@ -181,7 +181,7 @@ type EngineWriter interface {
 	// consensus rules that happen at finalization (e.g. block rewards).
 	FinalizeAndAssemble(config *chain.Config, header *types.Header, state *state.IntraBlockState,
 		txs types.Transactions, uncles []*types.Header, receipts types.Receipts, withdrawals []*types.Withdrawal, chain ChainReader, syscall SystemCall, call Call, logger log.Logger,
-	) (*types.Block, types.FlatRequests, error)
+	) (*types.Block, types.Receipts, types.FlatRequests, error)
 
 	// Seal generates a new sealing request for the given input block and pushes
 	// the result into the given channel.

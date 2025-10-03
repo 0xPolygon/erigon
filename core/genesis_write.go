@@ -156,7 +156,7 @@ func WriteGenesisBlock(tx kv.RwTx, genesis *types.Genesis, overrideOsakaTime *bi
 
 	// Check whether the genesis block is already written.
 	if genesis != nil {
-		block, _, err1 := GenesisToBlock(genesis, dirs, logger)
+		block, _, _, err1 := GenesisToBlock(genesis, dirs, logger)
 		if err1 != nil {
 			return genesis.Config, nil, err1
 		}
@@ -213,8 +213,8 @@ func WriteGenesisBlock(tx kv.RwTx, genesis *types.Genesis, overrideOsakaTime *bi
 	return newCfg, storedBlock, nil
 }
 
-func WriteGenesisState(g *types.Genesis, tx kv.RwTx, dirs datadir.Dirs, logger log.Logger) (*types.Block, *state.IntraBlockState, error) {
-	block, statedb, err := GenesisToBlock(g, dirs, logger)
+func WriteGenesisState(g *types.Genesis, _ kv.RwTx, dirs datadir.Dirs, logger log.Logger) (*types.Block, *state.IntraBlockState, error) {
+	block, _, statedb, err := GenesisToBlock(g, dirs, logger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -319,7 +319,7 @@ var DevnetSignKey = func(address common.Address) *ecdsa.PrivateKey {
 
 // GenesisToBlock creates the genesis block and writes state of a genesis specification
 // to the given database (or discards it if nil).
-func GenesisToBlock(g *types.Genesis, dirs datadir.Dirs, logger log.Logger) (*types.Block, *state.IntraBlockState, error) {
+func GenesisToBlock(g *types.Genesis, dirs datadir.Dirs, logger log.Logger) (*types.Block, types.Receipts, *state.IntraBlockState, error) {
 	if dirs.SnapDomain == "" {
 		panic("empty `dirs` variable")
 	}
@@ -431,12 +431,14 @@ func GenesisToBlock(g *types.Genesis, dirs datadir.Dirs, logger log.Logger) (*ty
 	})
 
 	if err := wg.Wait(); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	head.Root = root
 
-	return types.NewBlock(head, nil, nil, nil, withdrawals), statedb, nil
+	block, recs := types.NewBlock(head, nil, nil, nil, withdrawals)
+
+	return block, recs, statedb, nil
 }
 
 // GenesisWithoutStateToBlock creates the genesis block, assuming an empty state.

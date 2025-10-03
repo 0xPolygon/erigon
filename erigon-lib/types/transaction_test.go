@@ -815,3 +815,266 @@ func TestTrailingBytes(t *testing.T) {
 		panic("Malicious transaction has not errored!") // @audit this panic is occurs
 	}
 }
+
+func TestStateSyncTx_HashAndSigningHash(t *testing.T) {
+	t.Parallel()
+	ss := &StateSyncTx{
+		StateSyncData: []*StateSyncData{
+			{ID: 1, Contract: testAddr, Data: []byte("foo"), TxHash: randHash()},
+			{ID: 2, Contract: testAddr, Data: []byte("bar"), TxHash: randHash()},
+		},
+	}
+	h1 := ss.Hash()
+	h2 := ss.SigningHash(nil)
+
+	if h1 != h2 {
+		t.Fatalf("expected SigningHash == Hash, got %x vs %x", h1, h2)
+	}
+	if (h1 == common.Hash{}) {
+		t.Fatal("hash must not be empty")
+	}
+}
+
+func TestStateSyncTx_RLPRoundTrip(t *testing.T) {
+	t.Parallel()
+	orig := &StateSyncTx{
+		StateSyncData: []*StateSyncData{
+			{ID: 10, Contract: testAddr, Data: []byte("payload"), TxHash: randHash()},
+			{ID: 11, Contract: testAddr, Data: []byte("payload2"), TxHash: randHash()},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := orig.MarshalBinary(&buf); err != nil {
+		t.Fatalf("marshal error: %v", err)
+	}
+	decoded, err := DecodeTransaction(buf.Bytes())
+	if err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	ss2, ok := decoded.(*StateSyncTx)
+	if !ok {
+		t.Fatalf("decoded wrong type: %T", decoded)
+	}
+
+	// hashes must match
+	if orig.Hash() != ss2.Hash() {
+		t.Fatalf("hash mismatch, orig %x, got %x", orig.Hash(), ss2.Hash())
+	}
+	// data length must match
+	if len(ss2.StateSyncData) != len(orig.StateSyncData) {
+		t.Fatalf("state sync data mismatch, want %d, got %d", len(orig.StateSyncData), len(ss2.StateSyncData))
+	}
+}
+
+func TestStateSyncTx_JSONRoundTrip(t *testing.T) {
+	t.Parallel()
+	orig := &StateSyncTx{
+		StateSyncData: []*StateSyncData{
+			{ID: 42, Contract: testAddr, Data: []byte("baz"), TxHash: randHash()},
+		},
+	}
+	data, err := json.Marshal(orig)
+	if err != nil {
+		t.Fatalf("json marshal failed: %v", err)
+	}
+	tx2, err := UnmarshalTransactionFromJSON(data)
+	if err != nil {
+		t.Fatalf("json unmarshal failed: %v", err)
+	}
+	ss2, ok := tx2.(*StateSyncTx)
+	if !ok {
+		t.Fatalf("decoded wrong type: %T", tx2)
+	}
+	if ss2.Hash() != orig.Hash() {
+		t.Fatalf("hash mismatch after JSON round-trip")
+	}
+	if len(ss2.StateSyncData) != 1 || ss2.StateSyncData[0].ID != 42 {
+		t.Fatalf("unexpected state sync data after JSON round-trip: %+v", ss2.StateSyncData)
+	}
+}
+
+func TestStateSyncTx_InvalidIDs(t *testing.T) {
+	t.Parallel()
+	ss := &StateSyncTx{
+		StateSyncData: []*StateSyncData{
+			{ID: 5, Contract: testAddr, Data: []byte("a"), TxHash: randHash()},
+			{ID: 7, Contract: testAddr, Data: []byte("b"), TxHash: randHash()}, // gap, 6 is missing
+		},
+	}
+	var buf bytes.Buffer
+	err := ss.encode(&buf)
+	if err == nil {
+		t.Fatal("expected error due to non-contiguous IDs, got nil")
+	}
+}
+
+func TestStateSyncTx_HashSensitivity(t *testing.T) {
+	base := makeBaseStateSyncTx()
+
+	hashOf := func(mutate func(*StateSyncTx)) common.Hash {
+		// deep copy
+		st := &StateSyncTx{StateSyncData: make([]*StateSyncData, len(base.StateSyncData))}
+		for i, e := range base.StateSyncData {
+			if e != nil {
+				c := *e
+				st.StateSyncData[i] = &c
+			}
+		}
+		if mutate != nil {
+			mutate(st)
+		}
+		return st.Hash()
+	}
+
+	baseHash := hashOf(nil)
+
+	if got := hashOf(nil); got != baseHash {
+		t.Fatalf("determinism failed: %x vs %x", baseHash, got)
+	}
+
+	// Only mutations that respect contiguous IDs
+	cases := []struct {
+		name   string
+		mutate func(*StateSyncTx)
+	}{
+		{"change Contract", func(st *StateSyncTx) {
+			st.StateSyncData[0].Contract = common.HexToAddress("0x000000000000000000000000000000000000CAFE")
+		}},
+		{"change Data", func(st *StateSyncTx) {
+			st.StateSyncData[0].Data = []byte("alpha-mutated")
+		}},
+		{"change TxHash", func(st *StateSyncTx) {
+			st.StateSyncData[0].TxHash = common.HexToHash("0xAAAA")
+		}},
+		{"mutate second entry", func(st *StateSyncTx) {
+			st.StateSyncData[1].Contract = common.HexToAddress("0x000000000000000000000000000000000000BEEF")
+			st.StateSyncData[1].Data = []byte("beta-mutated")
+			st.StateSyncData[1].TxHash = common.HexToHash("0xBBBB")
+		}},
+		{"append new entry contiguous ID", func(st *StateSyncTx) {
+			st.StateSyncData = append(st.StateSyncData, &StateSyncData{
+				ID:       3, // contiguous after 1,2
+				Contract: common.HexToAddress("0x0000000000000000000000000000000000001003"),
+				Data:     []byte("gamma"),
+				TxHash:   common.HexToHash("0x3333"),
+			})
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := hashOf(tc.mutate); got == baseHash {
+				t.Fatalf("%s: hash did not change (base=%x, got=%x)", tc.name, baseHash, got)
+			}
+		})
+	}
+}
+
+func TestStateSyncTx_EncodeDecode_RoundTrip(t *testing.T) {
+	orig := makeBaseStateSyncTx()
+
+	var buf bytes.Buffer
+	if err := orig.encode(&buf); err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+	enc := buf.Bytes()
+
+	var rt StateSyncTx
+	if err := rt.decode(enc); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(orig, &rt) {
+		t.Fatalf("round-trip mismatch:\n  orig=%#v\n  rt=%#v", orig, &rt)
+	}
+
+	var buf2 bytes.Buffer
+	if err := rt.encode(&buf2); err != nil {
+		t.Fatalf("re-encode failed: %v", err)
+	}
+	if !bytes.Equal(enc, buf2.Bytes()) {
+		t.Fatalf("encode not deterministic: first=%x second=%x", enc, buf2.Bytes())
+	}
+}
+
+func TestStateSyncTx_Encode_FailsOnNilEntry(t *testing.T) {
+	withNil := &StateSyncTx{
+		StateSyncData: []*StateSyncData{
+			{ID: 1, Contract: testAddr, Data: []byte("alpha"), TxHash: randHash()},
+			nil, // encoder should reject this
+			{ID: 2, Contract: testAddr, Data: []byte("beta"), TxHash: randHash()},
+		},
+	}
+	var buf bytes.Buffer
+	err := withNil.encode(&buf)
+	if err == nil {
+		t.Fatalf("expected encode to fail on nil entry, got no error")
+	}
+}
+
+func TestStateSyncTx_EncodeDecode_Empty(t *testing.T) {
+	var empty StateSyncTx
+	var buf bytes.Buffer
+
+	if err := empty.encode(&buf); err != nil {
+		t.Fatalf("encode(empty) failed: %v", err)
+	}
+	var rt StateSyncTx
+	if err := rt.decode(buf.Bytes()); err != nil {
+		t.Fatalf("decode(empty) failed: %v", err)
+	}
+	if rt.StateSyncData == nil || len(rt.StateSyncData) != 0 {
+		t.Fatalf("expected empty slice, got %#v", rt.StateSyncData)
+	}
+}
+
+func TestStateSyncTx_Decode_Garbage(t *testing.T) {
+	var rt StateSyncTx
+	if err := rt.decode([]byte{0x01, 0x02, 0x03}); err == nil {
+		t.Fatalf("expected error on garbage decode")
+	}
+}
+
+func TestStateSyncTx_Encode_DeterministicAcrossCopies(t *testing.T) {
+	orig := makeBaseStateSyncTx()
+
+	// manual deep copy
+	clone := &StateSyncTx{StateSyncData: make([]*StateSyncData, len(orig.StateSyncData))}
+	for i, e := range orig.StateSyncData {
+		if e != nil {
+			c := *e
+			clone.StateSyncData[i] = &c
+		}
+	}
+
+	var b1, b2 bytes.Buffer
+	if err := orig.encode(&b1); err != nil {
+		t.Fatalf("encode(orig) failed: %v", err)
+	}
+	if err := clone.encode(&b2); err != nil {
+		t.Fatalf("encode(clone) failed: %v", err)
+	}
+	if !bytes.Equal(b1.Bytes(), b2.Bytes()) {
+		t.Fatalf("encode not deterministic across copies: enc1=%x enc2=%x", b1.Bytes(), b2.Bytes())
+	}
+}
+
+func makeBaseStateSyncTx() *StateSyncTx {
+	return &StateSyncTx{
+		StateSyncData: []*StateSyncData{
+			{
+				ID:       1,
+				Contract: common.HexToAddress("0x0000000000000000000000000000000000001001"),
+				Data:     []byte("alpha"),
+				TxHash:   common.HexToHash("0x1111"),
+			},
+			{
+				ID:       2,
+				Contract: common.HexToAddress("0x0000000000000000000000000000000000001002"),
+				Data:     []byte("beta"),
+				TxHash:   common.HexToHash("0x2222"),
+			},
+		},
+	}
+}

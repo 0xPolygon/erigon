@@ -229,19 +229,20 @@ func (s *Merge) Finalize(config *chain.Config, header *types.Header, state *stat
 
 func (s *Merge) FinalizeAndAssemble(config *chain.Config, header *types.Header, state *state.IntraBlockState,
 	txs types.Transactions, uncles []*types.Header, receipts types.Receipts, withdrawals []*types.Withdrawal, chain consensus.ChainReader, syscall consensus.SystemCall, call consensus.Call, logger log.Logger,
-) (*types.Block, types.FlatRequests, error) {
+) (*types.Block, types.Receipts, types.FlatRequests, error) {
 	if !misc.IsPoSHeader(header) {
 		return s.eth1Engine.FinalizeAndAssemble(config, header, state, txs, uncles, receipts, withdrawals, chain, syscall, call, logger)
 	}
 	header.RequestsHash = nil
 	outRequests, err := s.Finalize(config, header, state, txs, uncles, receipts, withdrawals, chain, syscall, false, logger)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if config.IsPrague(header.Time) {
 		header.RequestsHash = outRequests.Hash()
 	}
-	return types.NewBlockForAsembling(header, txs, uncles, receipts, withdrawals), outRequests, nil
+	block, recs := types.NewBlockForAsembling(header, txs, uncles, receipts, withdrawals)
+	return block, recs, outRequests, nil
 }
 
 func (s *Merge) SealHash(header *types.Header) (hash common.Hash) {

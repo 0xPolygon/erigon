@@ -859,14 +859,15 @@ func allHeadersUntil(chain consensus.ChainHeaderReader, from *types.Header, to c
 //}
 
 // FinalizeAndAssemble implements consensus.Engine
-func (c *AuRa) FinalizeAndAssemble(config *chain.Config, header *types.Header, state *state.IntraBlockState, txs types.Transactions, uncles []*types.Header, receipts types.Receipts, withdrawals []*types.Withdrawal, chain consensus.ChainReader, syscall consensus.SystemCall, call consensus.Call, logger log.Logger) (*types.Block, types.FlatRequests, error) {
+func (c *AuRa) FinalizeAndAssemble(config *chain.Config, header *types.Header, state *state.IntraBlockState, txs types.Transactions, uncles []*types.Header, receipts types.Receipts, withdrawals []*types.Withdrawal, chain consensus.ChainReader, syscall consensus.SystemCall, _ consensus.Call, logger log.Logger) (*types.Block, types.Receipts, types.FlatRequests, error) {
 	_, err := c.Finalize(config, header, state, txs, uncles, receipts, withdrawals, chain, syscall, false, logger)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Assemble and return the final block for sealing
-	return types.NewBlockForAsembling(header, txs, uncles, receipts, withdrawals), nil, nil
+	block, recs := types.NewBlockForAsembling(header, txs, uncles, receipts, withdrawals)
+	return block, recs, nil, nil
 }
 
 // Authorize injects a private key into the consensus engine to mint new blocks

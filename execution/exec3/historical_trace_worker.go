@@ -160,7 +160,7 @@ func (rw *HistoricalTraceWorker) RunTxTaskNoLock(txTask *state.TxTask) {
 	switch {
 	case txTask.TxIndex == -1:
 		if txTask.BlockNum == 0 {
-			_, ibs, err = core.GenesisToBlock(rw.execArgs.Genesis, rw.execArgs.Dirs, rw.logger)
+			_, _, ibs, err = core.GenesisToBlock(rw.execArgs.Genesis, rw.execArgs.Dirs, rw.logger)
 			if err != nil {
 				panic(fmt.Errorf("GenesisToBlock: %w", err))
 			}

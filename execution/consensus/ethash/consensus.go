@@ -580,15 +580,16 @@ func (ethash *Ethash) Finalize(config *chain.Config, header *types.Header, state
 func (ethash *Ethash) FinalizeAndAssemble(chainConfig *chain.Config, header *types.Header, state *state.IntraBlockState,
 	txs types.Transactions, uncles []*types.Header, r types.Receipts, withdrawals []*types.Withdrawal,
 	chain consensus.ChainReader, syscall consensus.SystemCall, call consensus.Call, logger log.Logger,
-) (*types.Block, types.FlatRequests, error) {
+) (*types.Block, types.Receipts, types.FlatRequests, error) {
 
 	// Finalize block
 	_, err := ethash.Finalize(chainConfig, header, state, txs, uncles, r, withdrawals, chain, syscall, false, logger)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	// Header seems complete, assemble into a block and return
-	return types.NewBlock(header, txs, uncles, r, withdrawals), nil, nil
+	block, recs := types.NewBlock(header, txs, uncles, r, withdrawals)
+	return block, recs, nil, nil
 }
 
 // SealHash returns the hash of a block prior to it being sealed.

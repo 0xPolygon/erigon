@@ -44,6 +44,7 @@ type BorConfig struct {
 	NapoliBlock                *big.Int          `json:"napoliBlock"`                // Napoli switch block (nil = no fork, 0 = already on Napoli)
 	AhmedabadBlock             *big.Int          `json:"ahmedabadBlock"`             // Ahmedabad switch block (nil = no fork, 0 = already on Ahmedabad)
 	BhilaiBlock                *big.Int          `json:"bhilaiBlock"`                // Bhilai switch block (nil = no fork, 0 = already on Ahmedabad)
+	StateSyncBlock             *big.Int          `json:"stateSyncBlock"`             // StateSync switch block (nil = no fork, 0 = already on StateSync) // TODO define better name
 	StateSyncConfirmationDelay map[string]uint64 `json:"stateSyncConfirmationDelay"` // StateSync Confirmation Delay, in seconds, to calculate `to`
 
 	sprints sprints
@@ -140,9 +141,9 @@ func (c *BorConfig) IsIndore(number uint64) bool {
 	return isForked(c.IndoreBlock, number)
 }
 
-// IsAgra returns whether num is either equal to the Agra fork block or greater.
+// IsAgra returns whether the num is either equal to the Agra fork block or greater.
 // The Agra hard fork is based on the Shanghai hard fork, but it doesn't include withdrawals.
-// Also Agra is activated based on the block number rather than the timestamp.
+// Also, Agra is activated based on the block number rather than the timestamp.
 // Refer to https://forum.polygon.technology/t/pip-28-agra-hardfork
 func (c *BorConfig) IsAgra(num uint64) bool {
 	return isForked(c.AgraBlock, num)
@@ -175,6 +176,14 @@ func (c *BorConfig) IsBhilai(number uint64) bool {
 
 func (c *BorConfig) GetBhilaiBlock() *big.Int {
 	return c.BhilaiBlock
+}
+
+func (c *BorConfig) IsStateSync(number uint64) bool {
+	return isForked(c.StateSyncBlock, number)
+}
+
+func (c *BorConfig) GetStateSyncBlock() *big.Int {
+	return c.StateSyncBlock
 }
 
 func (c *BorConfig) CalculateStateSyncDelay(number uint64) uint64 {

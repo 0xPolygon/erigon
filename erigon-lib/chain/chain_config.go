@@ -178,6 +178,8 @@ type BorConfig interface {
 	GetAhmedabadBlock() *big.Int
 	IsBhilai(num uint64) bool
 	GetBhilaiBlock() *big.Int
+	IsStateSync(num uint64) bool
+	GetStateSyncBlock() *big.Int
 	StateReceiverContractAddress() common.Address
 	CalculateSprintNumber(number uint64) uint64
 	CalculateSprintLength(number uint64) uint64
@@ -195,12 +197,13 @@ func (c *Config) String() string {
 	engine := c.getEngine()
 
 	if c.Bor != nil {
-		return fmt.Sprintf("{ChainID: %v, Agra: %v, Napoli: %v, Ahmedabad: %v, Bhilai: %v, Engine: %v}",
+		return fmt.Sprintf("{ChainID: %v, Agra: %v, Napoli: %v, Ahmedabad: %v, Bhilai: %v, StateSync: %v, Engine: %v}",
 			c.ChainID,
 			c.Bor.GetAgraBlock(),
 			c.Bor.GetNapoliBlock(),
 			c.Bor.GetAhmedabadBlock(),
 			c.Bor.GetBhilaiBlock(),
+			c.Bor.GetStateSyncBlock(),
 			engine,
 		)
 	}
@@ -668,6 +671,7 @@ type Rules struct {
 	IsCancun, IsNapoli, IsBhilai                      bool
 	IsPrague, IsOsaka                                 bool
 	IsAura                                            bool
+	IsStateSync                                       bool // TODO define a name when we have a fork that enables it
 }
 
 // Rules ensures c's ChainID is not nil and returns a new Rules instance

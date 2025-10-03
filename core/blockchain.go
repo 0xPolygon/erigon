@@ -346,14 +346,14 @@ func SysCreate(contract common.Address, data []byte, chainConfig *chain.Config, 
 }
 
 func FinalizeBlockExecution(
-	engine consensus.Engine, stateReader state.StateReader,
+	engine consensus.Engine, _ state.StateReader,
 	header *types.Header, txs types.Transactions, uncles []*types.Header,
 	stateWriter state.StateWriter, cc *chain.Config,
 	ibs *state.IntraBlockState, receipts types.Receipts,
 	withdrawals []*types.Withdrawal, chainReader consensus.ChainReader,
 	isMining bool,
 	logger log.Logger,
-	tracer *tracing.Hooks,
+	_ *tracing.Hooks,
 ) (newBlock *types.Block, retRequests types.FlatRequests, err error) {
 	syscall := func(contract common.Address, data []byte) ([]byte, error) {
 		ret, err := SysCallContract(contract, data, cc, ibs, header, engine, false /* constCall */, vm.Config{})
@@ -361,7 +361,7 @@ func FinalizeBlockExecution(
 	}
 
 	if isMining {
-		newBlock, retRequests, err = engine.FinalizeAndAssemble(cc, header, ibs, txs, uncles, receipts, withdrawals, chainReader, syscall, nil, logger)
+		newBlock, receipts, retRequests, err = engine.FinalizeAndAssemble(cc, header, ibs, txs, uncles, receipts, withdrawals, chainReader, syscall, nil, logger)
 	} else {
 		retRequests, err = engine.Finalize(cc, header, ibs, txs, uncles, receipts, withdrawals, chainReader, syscall, false, logger)
 	}

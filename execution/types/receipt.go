@@ -576,6 +576,11 @@ func (e receiptEncoder69) EncodeRLP(w io.Writer) error { return e.r.EncodeRLP69(
 func (rs Receipts) EncodeRLP69(w io.Writer) error {
 	encs := make([]receiptEncoder69, len(rs))
 	for i := range rs {
+		// state sync receipts have CumulativeGasUsed == 0 and Type == 0
+		// to avoid ambiguity, we force Type to 0 if CumulativeGasUsed == 0
+		if rs[i].CumulativeGasUsed == 0 {
+			rs[i].Type = 0
+		}
 		encs[i] = receiptEncoder69{r: rs[i]}
 	}
 	return rlp.Encode(w, encs)

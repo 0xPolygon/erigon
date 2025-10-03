@@ -54,7 +54,6 @@ const (
 	BlobTxType
 	SetCodeTxType
 	AccountAbstractionTxType
-	StateSyncTxType = 127
 )
 
 // Transaction is an Ethereum transaction.

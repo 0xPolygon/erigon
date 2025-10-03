@@ -28,7 +28,6 @@ import (
 	"github.com/erigontech/erigon-lib/common/empty"
 	"github.com/erigontech/erigon-lib/log/v3"
 	"github.com/erigontech/erigon/db/kv"
-	"github.com/erigontech/erigon/db/kv/rawdbv3"
 	"github.com/erigontech/erigon/db/state"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -359,20 +358,20 @@ func TestReadStateSyncReceiptByHash_Found(t *testing.T) {
 	br := m.BlockReader
 	txNumReader := br.TxnumReader(ctx)
 
-	// Create a StateSyncTx
-	ssData := []*types.StateSyncData{{
-		ID:       1,
-		Contract: common.Address{0x01},
-		Data:     []byte("statesync"),
-		TxHash:   common.HexToHash("0xabcdef"),
-	}}
-	ssTx := &types.StateSyncTx{StateSyncData: ssData}
-	body := &types.Body{Transactions: types.Transactions{ssTx}}
+	// Create a fake (legacy) transaction
+	tx := types.NewTransaction(
+		0,
+		common.HexToAddress("0x01"),
+		uint256.NewInt(0),
+		21000,
+		uint256.NewInt(1),
+		nil,
+	)
 
-	// Build header with proper TxHash
+	body := &types.Body{Transactions: types.Transactions{tx}}
 	header := &types.Header{
 		Number:      big.NewInt(1),
-		TxHash:      types.DeriveSha(types.Transactions{ssTx}),
+		TxHash:      types.DeriveSha(types.Transactions{tx}),
 		UncleHash:   empty.UncleHash,
 		ReceiptHash: empty.RootHash,
 	}
@@ -382,14 +381,15 @@ func TestReadStateSyncReceiptByHash_Found(t *testing.T) {
 	require.NoError(t, rawdb.WriteHeader(txRw, header))
 	require.NoError(t, rawdb.WriteBody(txRw, header.Hash(), 1, body))
 
-	// Build a state-sync receipt
+	// Create a state-sync receipt (Type == 0, CumulativeGasUsed == 0)
 	ssr := &types.Receipt{
-		Type:             types.StateSyncTxType,
-		TxHash:           ssTx.Hash(),
-		BlockHash:        header.Hash(),
-		BlockNumber:      header.Number,
-		TransactionIndex: 0,
-		Status:           types.ReceiptStatusSuccessful,
+		Type:              0,
+		CumulativeGasUsed: 0,
+		TxHash:            tx.Hash(),
+		BlockHash:         header.Hash(),
+		BlockNumber:       header.Number,
+		TransactionIndex:  0,
+		Status:            types.ReceiptStatusSuccessful,
 	}
 	ssr.Bloom = types.CreateBloom(types.Receipts{ssr})
 
@@ -413,30 +413,91 @@ func TestReadStateSyncReceiptByHash_Found(t *testing.T) {
 	b := types.NewBlockFromStorage(header.Hash(), header, body.Transactions, body.Uncles, nil)
 	require.NotNil(t, b)
 
-	// Assert we can find the state-sync receipt by tx hash
-	got, err := rawdb.ReadStateSyncReceiptByHash(txRw, b, txNumReader, ssTx.Hash())
+	// Assert state-sync receipt is found
+	got, err := rawdb.ReadStateSyncReceiptByHash(txRw, b, txNumReader, tx.Hash())
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	require.Equal(t, uint8(types.StateSyncTxType), got.Type)
-	require.Equal(t, ssTx.Hash(), got.TxHash)
+	require.Equal(t, tx.Hash(), got.TxHash)
 	require.Equal(t, header.Hash(), got.BlockHash)
 	require.Equal(t, header.Number.Uint64(), got.BlockNumber.Uint64())
 }
 
 func TestReadStateSyncReceiptByHash_NotFound(t *testing.T) {
-	m := mockWithGenerator(t, 2, nil)
+	m := mock.Mock(t)
+	// Enable receipt cache domain
+	m.DB.(state.HasAgg).Agg().(*state.Aggregator).EnableDomain(kv.RCacheDomain)
 
-	txRo, err := m.DB.BeginTemporalRo(m.Ctx)
+	txRw, err := m.DB.BeginTemporalRw(m.Ctx)
 	require.NoError(t, err)
-	defer txRo.Rollback()
+	defer txRw.Rollback()
 
-	blk, err := m.BlockReader.BlockByNumber(m.Ctx, txRo, 0)
+	ctx := m.Ctx
+	br := m.BlockReader
+	txNumReader := br.TxnumReader(ctx)
+
+	// Create a fake (legacy) transaction
+	tx := types.NewTransaction(
+		0,
+		common.HexToAddress("0x02"),
+		uint256.NewInt(0),
+		21000,
+		uint256.NewInt(1),
+		nil,
+	)
+	body := &types.Body{Transactions: types.Transactions{tx}}
+
+	header := &types.Header{
+		Number:      big.NewInt(2),
+		TxHash:      types.DeriveSha(types.Transactions{tx}),
+		UncleHash:   empty.UncleHash,
+		ReceiptHash: empty.RootHash,
+	}
+
+	// Persist header/body
+	require.NoError(t, rawdb.WriteCanonicalHash(txRw, header.Hash(), 2))
+	require.NoError(t, rawdb.WriteHeader(txRw, header))
+	require.NoError(t, rawdb.WriteBody(txRw, header.Hash(), 2, body))
+
+	// Create a non state-sync receipt (CumulativeGasUsed != 0)
+	norm := &types.Receipt{
+		Type:              0,
+		CumulativeGasUsed: 21000,
+		TxHash:            tx.Hash(),
+		BlockHash:         header.Hash(),
+		BlockNumber:       header.Number,
+		TransactionIndex:  0,
+		Status:            types.ReceiptStatusSuccessful,
+	}
+	norm.Bloom = types.CreateBloom(types.Receipts{norm})
+
+	sd, err := state.NewSharedDomains(txRw, log.New())
+	require.NoError(t, err)
+	defer sd.Close()
+
+	base, err := txNumReader.Min(txRw, 1)
 	require.NoError(t, err)
 
+	require.NoError(t, rawdb.WriteReceiptCacheV2(sd.AsPutDel(txRw), nil, base))
+	require.NoError(t, rawdb.WriteReceiptCacheV2(sd.AsPutDel(txRw), norm, base+1))
+	require.NoError(t, rawdb.WriteReceiptCacheV2(sd.AsPutDel(txRw), nil, base+2))
+
+	_, err = sd.ComputeCommitment(ctx, true, header.Number.Uint64(), base+2, "flush")
+	require.NoError(t, err)
+	require.NoError(t, sd.Flush(ctx, txRw))
+
+	// Build block
+	b := types.NewBlockFromStorage(header.Hash(), header, body.Transactions, body.Uncles, nil)
+	require.NotNil(t, b)
+
+	// Query by ss tx hash, expect not found
+	r, err := rawdb.ReadStateSyncReceiptByHash(txRw, b, txNumReader, tx.Hash())
+	require.Error(t, err)
+	require.Nil(t, r)
+
+	// Verify with an unknown hash
 	var unknown common.Hash
 	copy(unknown[:], "no-state-sync-tx")
-
-	r, err := rawdb.ReadStateSyncReceiptByHash(txRo, blk, rawdbv3.TxNums, unknown)
+	r, err = rawdb.ReadStateSyncReceiptByHash(txRw, b, txNumReader, unknown)
 	require.Error(t, err)
 	require.Nil(t, r)
 }

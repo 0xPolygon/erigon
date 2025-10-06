@@ -353,9 +353,8 @@ func (g *Generator) GetReceipts(ctx context.Context, cfg *chain.Config, tx kv.Te
 	// PIP-74: state sync addition
 	txs := block.Transactions()
 	if len(txs) > 0 {
-		ssTx := block.Transactions()[len(block.Transactions())-1]
-		if fromDB, err := rawdb.ReadStateSyncReceiptByHash(tx, block, g.txNumReader, ssTx.Hash()); err == nil && fromDB != nil {
-			receipts = append(receipts, fromDB)
+		if ssTxReceipt, err := rawdb.ReadStateSyncReceiptByHash(tx, block, g.txNumReader); err == nil && ssTxReceipt != nil {
+			receipts = append(receipts, ssTxReceipt)
 		}
 	}
 

@@ -1287,26 +1287,40 @@ func ReadReceiptsCacheV2(tx kv.TemporalTx, block *types.Block, txNumReader rawdb
 	return res, nil
 }
 
-// ReadStateSyncReceiptByHash reads a state-sync receipt by its transaction hash within a specific block.
-// State-sync receipts are identified by having a CumulativeGasUsed of 0.
-// If no matching receipt is found, an error is returned.
-func ReadStateSyncReceiptByHash(
-	tx kv.TemporalTx,
-	block *types.Block,
-	txNumReader rawdbv3.TxNumsReader,
-	txHash common.Hash,
-) (*types.Receipt, error) {
+// ReadStateSyncReceiptByHash reads the state-sync receipt by its transaction hash within a specific block.
+// the state-sync transaction (if present) is always the last one in the block.
+// A state-sync receipt is identified if:
+//   - It has CumulativeGasUsed == 0, OR
+//   - Its CumulativeGasUsed equals that of the previous receipt (indicating zero gas usage).
+//
+// If no such receipt is found, nil is returned.
+func ReadStateSyncReceiptByHash(tx kv.TemporalTx, block *types.Block, txNumReader rawdbv3.TxNumsReader) (*types.Receipt, error) {
 	receipts, err := ReadReceiptsCacheV2(tx, block, txNumReader)
 	if err != nil {
 		return nil, err
 	}
-	for _, r := range receipts {
-		// discriminate state-sync receipts by CumulativeGasUsed == 0 and matching TxHash
-		if r.CumulativeGasUsed == 0 && r.TxHash == txHash {
-			return r, nil
-		}
+
+	n := len(receipts)
+	if n == 0 {
+		log.Info("ReadStateSyncReceiptByHash: no receipts found", "blockNumber", block.NumberU64())
+		return nil, nil
 	}
-	return nil, fmt.Errorf("state-sync receipt not found for tx %x in block %d", txHash[:], block.NumberU64())
+
+	last := receipts[n-1]
+
+	// explicit zero cumulative gas => state-sync tx
+	if last.CumulativeGasUsed == 0 {
+		return last, nil
+	}
+
+	// equal cumulative gas as previous (zero gas usage) => state-sync tx
+	if n >= 2 && last.CumulativeGasUsed == receipts[n-2].CumulativeGasUsed {
+		return last, nil
+	}
+
+	log.Info("ReadStateSyncReceiptByHash: state-sync receipt not found", "blockNumber", block.NumberU64())
+
+	return nil, nil
 }
 
 func WriteReceiptCacheV2(tx kv.TemporalPutDel, receipt *types.Receipt, txNum uint64) error {

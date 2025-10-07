@@ -214,6 +214,7 @@ func (api *TraceAPIImpl) Block(ctx context.Context, blockNr rpc.BlockNumber, gas
 			pt.BlockNumber = &blockNum
 			pt.TransactionHash = trace.TransactionHash
 			pt.TransactionPosition = &txpos
+			pt.Result = trace.Output // THIS
 			out = append(out, *pt)
 		}
 	}

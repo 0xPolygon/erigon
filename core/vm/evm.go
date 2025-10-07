@@ -180,12 +180,14 @@ func (evm *EVM) Interpreter() Interpreter {
 }
 
 func (evm *EVM) call(typ OpCode, caller ContractRef, addr common.Address, input []byte, gas uint64, value *uint256.Int, bailout bool) (ret []byte, leftOverGas uint64, err error) {
+	logger := log.New()
+	logger.Trace("EVM.call", "type", typ, "caller", caller.Address().Hex(), "addr", addr.Hex(), "input", fmt.Sprintf("0x%x", input), "gas", gas, "value", value, "bailout", bailout)
 	if evm.abort.Load() {
 		return ret, leftOverGas, nil
 	}
 
 	depth := evm.interpreter.Depth()
-
+	logger.Error("EVM.call 1")
 	p, isPrecompile := evm.precompile(addr)
 	var code []byte
 	if !isPrecompile {
@@ -199,8 +201,10 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr common.Address, input 
 	if evm.Config().Tracer != nil {
 		v := value
 		if typ == STATICCALL {
+			logger.Error("EVM.call 2")
 			v = nil
 		} else if typ == DELEGATECALL {
+			logger.Error("EVM.call 3")
 			// NOTE: caller must, at all times be a contract. It should never happen
 			// that caller is something other than a Contract.
 			parent := caller.(*Contract)
@@ -214,13 +218,16 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr common.Address, input 
 	}
 
 	if evm.config.NoRecursion && depth > 0 {
+		logger.Error("EVM.call 4")
 		return nil, gas, nil
 	}
 	// Fail if we're trying to execute above the call depth limit
 	if depth > int(params.CallCreateDepth) {
+		logger.Error("EVM.call 5")
 		return nil, gas, ErrDepth
 	}
 	if typ == CALL || typ == CALLCODE {
+		logger.Error("EVM.call 6")
 		// Fail if we're trying to transfer more than the available balance
 		canTransfer, err := evm.Context.CanTransfer(evm.intraBlockState, caller.Address(), value)
 		if err != nil {
@@ -236,6 +243,7 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr common.Address, input 
 	snapshot := evm.intraBlockState.Snapshot()
 
 	if typ == CALL {
+		logger.Error("EVM.call 7")
 		exist, err := evm.intraBlockState.Exist(addr)
 		if err != nil {
 			return nil, 0, fmt.Errorf("%w: %w", ErrIntraBlockStateFailed, err)
@@ -248,6 +256,7 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr common.Address, input 
 		}
 		evm.Context.Transfer(evm.intraBlockState, caller.Address(), addr, value, bailout)
 	} else if typ == STATICCALL {
+		logger.Error("EVM.call 8")
 		// We do an AddBalance of zero here, just in order to trigger a touch.
 		// This doesn't matter on Mainnet, where all empties are gone at the time of Byzantium,
 		// but is the correct thing to do and matters on other networks, in tests, and potential
@@ -259,10 +268,12 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr common.Address, input 
 	if isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config().Tracer)
 	} else if len(code) == 0 {
+		logger.Error("EVM.call 9")
 		// If the account has no code, we can abort here
 		// The depth-check is already done, and precompiles handled above
 		ret, err = nil, nil // gas is unchanged
 	} else {
+		logger.Error("EVM.call 10")
 		// At this point, we use a copy of address. If we don't, the go compiler will
 		// leak the 'contract' to the outer scope, and make allocation for 'contract'
 		// even if the actual execution ends on RunPrecompiled above.
@@ -276,10 +287,13 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr common.Address, input 
 		}
 		var contract *Contract
 		if typ == CALLCODE {
+			logger.Error("EVM.call 11")
 			contract = NewContract(caller, caller.Address(), value, gas, evm.config.SkipAnalysis, evm.config.JumpDestCache)
 		} else if typ == DELEGATECALL {
+			logger.Error("EVM.call 12")
 			contract = NewContract(caller, caller.Address(), value, gas, evm.config.SkipAnalysis, evm.config.JumpDestCache).AsDelegate()
 		} else {
+			logger.Error("EVM.call 13")
 			contract = NewContract(caller, addrCopy, value, gas, evm.config.SkipAnalysis, evm.config.JumpDestCache)
 		}
 		contract.SetCallCode(&addrCopy, codeHash, code)
@@ -287,6 +301,7 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr common.Address, input 
 		if typ == STATICCALL {
 			readOnly = true
 		}
+		logger.Error("EVM.call 14")
 		ret, err = evm.interpreter.Run(contract, input, readOnly)
 		gas = contract.Gas
 	}
@@ -305,6 +320,7 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr common.Address, input 
 		//} else {
 		//	evm.StateDB.DiscardSnapshot(snapshot)
 	}
+	logger.Error("EVM.call 15")
 	return ret, gas, err
 }
 
@@ -588,7 +604,7 @@ func (evm *EVM) captureEnd(depth int, typ OpCode, startGas uint64, leftOverGas u
 
 	if tracer.OnExit != nil {
 		logger := log.New()
-		logger.Error("captureEnd", "depth", depth, "typ", typ, "startGas", startGas, "leftOverGas", leftOverGas, "retLen", len(ret), "err", err)
+		logger.Error("captureEnd", "reverted", reverted, "depth", depth, "typ", typ, "startGas", startGas, "leftOverGas", leftOverGas, "retLen", len(ret), "err", err)
 		tracer.OnExit(depth, ret, startGas-leftOverGas, VMErrorFromErr(err), reverted)
 	}
 }

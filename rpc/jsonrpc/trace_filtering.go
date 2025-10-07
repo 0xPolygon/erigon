@@ -172,8 +172,8 @@ func rewardKindToString(kind consensus.RewardKind) string {
 func (api *TraceAPIImpl) Block(ctx context.Context, blockNr rpc.BlockNumber, gasBailOut *bool, traceConfig *config.TraceConfig) (ParityTraces, error) {
 	if gasBailOut == nil {
 		gasBailOut = new(bool) // false by default
-		*gasBailOut = true
 	}
+	*gasBailOut = true
 	tx, err := api.kv.BeginTemporalRo(ctx)
 	if err != nil {
 		return nil, err

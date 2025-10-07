@@ -173,6 +173,7 @@ func (api *TraceAPIImpl) Block(ctx context.Context, blockNr rpc.BlockNumber, gas
 	if gasBailOut == nil {
 		gasBailOut = new(bool) // false by default
 	}
+	*gasBailOut = false
 	tx, err := api.kv.BeginTemporalRo(ctx)
 	if err != nil {
 		return nil, err

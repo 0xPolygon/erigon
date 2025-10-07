@@ -308,9 +308,9 @@ func SysCallContractWithBlockContext(contract common.Address, data []byte, chain
 		msg.Value(),
 		false,
 	)
-	if isBor && err != nil {
-		return nil, nil
-	}
+	// if isBor && err != nil {
+	// 	return nil, nil
+	// }
 
 	return ret, err
 }

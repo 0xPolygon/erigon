@@ -459,6 +459,8 @@ func (ot *OeTracer) OnEnter(depth int, typ byte, from common.Address, to common.
 }
 
 func (ot *OeTracer) captureEndOrExit(deep bool, output []byte, gasUsed uint64, err error) {
+	logger := log.New()
+	logger.Error("captureEndOrExit", "deep", deep, "output", fmt.Sprintf("0x%x", output), "gasUsed", gasUsed, "err", err)
 	if ot.r.VmTrace != nil {
 		if len(ot.vmOpStack) > 0 {
 			ot.lastOffStack = ot.vmOpStack[len(ot.vmOpStack)-1]

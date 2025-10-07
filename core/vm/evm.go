@@ -22,18 +22,19 @@ package vm
 import (
 	"errors"
 	"fmt"
+
 	"sync/atomic"
 
 	"github.com/holiman/uint256"
 
-	"github.com/erigontech/erigon-lib/common/empty"
-	"github.com/erigontech/erigon/core/state"
-
 	"github.com/erigontech/erigon-lib/chain"
 	"github.com/erigontech/erigon-lib/chain/params"
 	"github.com/erigontech/erigon-lib/common"
+	"github.com/erigontech/erigon-lib/common/empty"
 	"github.com/erigontech/erigon-lib/common/u256"
 	"github.com/erigontech/erigon-lib/crypto"
+	"github.com/erigontech/erigon-lib/log/v3"
+	"github.com/erigontech/erigon/core/state"
 	"github.com/erigontech/erigon/core/tracing"
 	"github.com/erigontech/erigon/core/vm/evmtypes"
 )
@@ -586,6 +587,8 @@ func (evm *EVM) captureEnd(depth int, typ OpCode, startGas uint64, leftOverGas u
 	}
 
 	if tracer.OnExit != nil {
+		logger := log.New()
+		logger.Error("captureEnd", "depth", depth, "typ", typ, "startGas", startGas, "leftOverGas", leftOverGas, "retLen", len(ret), "err", err)
 		tracer.OnExit(depth, ret, startGas-leftOverGas, VMErrorFromErr(err), reverted)
 	}
 }

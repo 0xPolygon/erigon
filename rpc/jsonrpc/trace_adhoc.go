@@ -460,7 +460,7 @@ func (ot *OeTracer) OnEnter(depth int, typ byte, from common.Address, to common.
 
 func (ot *OeTracer) captureEndOrExit(deep bool, output []byte, gasUsed uint64, err error) {
 	logger := log.New()
-	logger.Error("captureEndOrExit", "deep", deep, "output", fmt.Sprintf("0x%x", output), "gasUsed", gasUsed, "err", err)
+
 	if ot.r.VmTrace != nil {
 		if len(ot.vmOpStack) > 0 {
 			ot.lastOffStack = ot.vmOpStack[len(ot.vmOpStack)-1]
@@ -490,37 +490,47 @@ func (ot *OeTracer) captureEndOrExit(deep bool, output []byte, gasUsed uint64, e
 	if ot.compat {
 		ignoreError = !deep && topTrace.Type == CREATE
 	}
+	logger.Error("captureEndOrExit", "ignoreError", ignoreError, "deep", deep, "output", fmt.Sprintf("0x%x", output), "gasUsed", gasUsed, "err", err)
 	if err != nil && !ignoreError {
+		logger.Error("captureEndOrExit 1", "err", err)
 		if errors.Is(err, vm.ErrExecutionReverted) {
 			topTrace.Error = "Reverted"
 			switch topTrace.Type {
 			case CALL:
+				logger.Error("captureEndOrExit 2", "err", err)
 				topTrace.Result.(*TraceResult).GasUsed = new(hexutil.Big)
 				topTrace.Result.(*TraceResult).GasUsed.ToInt().SetUint64(gasUsed)
 				topTrace.Result.(*TraceResult).Output = common.CopyBytes(output)
 			case CREATE:
+				logger.Error("captureEndOrExit 3", "err", err)
 				topTrace.Result.(*CreateTraceResult).GasUsed = new(hexutil.Big)
 				topTrace.Result.(*CreateTraceResult).GasUsed.ToInt().SetUint64(gasUsed)
 				topTrace.Result.(*CreateTraceResult).Code = common.CopyBytes(output)
 			}
 		} else {
+			logger.Error("captureEndOrExit 4", "err", err)
 			topTrace.Result = nil
 			topTrace.Error = err.Error()
 		}
 	} else {
+		logger.Error("captureEndOrExit 5", "err", err)
 		if len(output) > 0 {
 			switch topTrace.Type {
 			case CALL:
+				logger.Error("captureEndOrExit 6", "err", err)
 				topTrace.Result.(*TraceResult).Output = common.CopyBytes(output)
 			case CREATE:
+				logger.Error("captureEndOrExit 7", "err", err)
 				topTrace.Result.(*CreateTraceResult).Code = common.CopyBytes(output)
 			}
 		}
 		switch topTrace.Type {
 		case CALL:
+			logger.Error("captureEndOrExit 8", "err", err)
 			topTrace.Result.(*TraceResult).GasUsed = new(hexutil.Big)
 			topTrace.Result.(*TraceResult).GasUsed.ToInt().SetUint64(gasUsed)
 		case CREATE:
+			logger.Error("captureEndOrExit 9", "err", err)
 			topTrace.Result.(*CreateTraceResult).GasUsed = new(hexutil.Big)
 			topTrace.Result.(*CreateTraceResult).GasUsed.ToInt().SetUint64(gasUsed)
 		}
@@ -529,6 +539,7 @@ func (ot *OeTracer) captureEndOrExit(deep bool, output []byte, gasUsed uint64, e
 	if deep {
 		ot.traceAddr = ot.traceAddr[:len(ot.traceAddr)-1]
 	}
+	logger.Error("captureEndOrExit 10", "err", err)
 }
 
 func (ot *OeTracer) OnExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {

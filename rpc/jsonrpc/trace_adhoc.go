@@ -1448,9 +1448,9 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 			if tracer != nil && tracer.Hooks.OnTxStart != nil {
 				tracer.Hooks.OnTxStart(evm.GetVMContext(), txns[txIndex], msg.From())
 			}
-			logger := log.New("trace_block_results")
+			logger := log.New()
 			execResult, err = core.ApplyMessage(evm, msg, gp, true /* refunds */, gasBailout /* gasBailout */, engine)
-			logger.Error("traceBlock", "txIndex", txIndex, "failed", execResult.Failed(), "revert", execResult.Revert(), "gasBailout", gasBailout, "returnData", execResult.ReturnData, "msg", msg, "tx", txns[txIndex])
+			logger.Error("traceBlock", "txIndex", txIndex, "from", msg.From().Hex(), "to", msg.To().Hex(), "failed", execResult.Failed(), "revert", execResult.Revert(), "gasBailout", gasBailout, "returnData", execResult.ReturnData, "msg", msg, "tx", txns[txIndex])
 		}
 		if err != nil {
 			if tracer != nil && tracer.Hooks.OnTxEnd != nil {

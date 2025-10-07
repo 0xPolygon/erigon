@@ -1354,6 +1354,9 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 	var tracingHooks *tracing.Hooks
 
 	for txIndex, msg := range msgs {
+		if txIndex < 2 {
+			continue
+		}
 		if isHistoricalStateReader {
 			historicalStateReader.SetTxNum(baseTxNum + uint64(txIndex))
 		}

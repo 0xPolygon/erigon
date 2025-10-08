@@ -1349,11 +1349,12 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 		baseTxNum = historicalStateReader.GetTxNum()
 	}
 
-	blockCtx := transactions.NewEVMBlockContext(engine, header, parentNrOrHash.RequireCanonical, dbtx, api._blockReader, chainConfig)
 	var tracer *tracers.Tracer
 	var tracingHooks *tracing.Hooks
 
 	for txIndex, msg := range msgs {
+		blockCtx := transactions.NewEVMBlockContext(engine, header, parentNrOrHash.RequireCanonical, dbtx, api._blockReader, chainConfig)
+
 		if isHistoricalStateReader {
 			historicalStateReader.SetTxNum(baseTxNum + uint64(txIndex))
 		}

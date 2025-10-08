@@ -413,12 +413,16 @@ func TestReadStateSyncReceiptByHash_Found(t *testing.T) {
 	require.NotNil(t, b)
 
 	// Assert state-sync receipt is found
-	got, err := rawdb.ReadStateSyncReceiptByHash(txRw, b, txNumReader)
+	got, err := rawdb.ReadReceiptsCacheV2(txRw, b, txNumReader)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	require.Equal(t, tx.Hash(), got.TxHash)
-	require.Equal(t, header.Hash(), got.BlockHash)
-	require.Equal(t, header.Number.Uint64(), got.BlockNumber.Uint64())
+	require.Equal(t, got.Len(), 1)
+
+	r := got[0]
+
+	require.Equal(t, tx.Hash(), r.TxHash)
+	require.Equal(t, header.Hash(), r.BlockHash)
+	require.Equal(t, header.Number.Uint64(), r.BlockNumber.Uint64())
 }
 
 func TestReadStateSyncReceiptByHash_NoStateSync(t *testing.T) {
@@ -474,9 +478,9 @@ func TestReadStateSyncReceiptByHash_NoStateSync(t *testing.T) {
 	require.NotNil(t, b)
 
 	// Expect nil (no state-sync)
-	got, err := rawdb.ReadStateSyncReceiptByHash(txRw, b, txNumReader)
+	got, err := rawdb.ReadReceiptsCacheV2(txRw, b, txNumReader)
 	require.NoError(t, err)
-	require.Nil(t, got)
+	require.Equal(t, got.Len(), 0)
 }
 
 func TestReadStateSyncReceiptByHash_EqualGasUsedStateSync(t *testing.T) {
@@ -553,13 +557,17 @@ func TestReadStateSyncReceiptByHash_EqualGasUsedStateSync(t *testing.T) {
 	require.NotNil(t, b)
 
 	// Expect ssTx found: receipt r2
-	got, err := rawdb.ReadStateSyncReceiptByHash(txRw, b, txNumReader)
+	got, err := rawdb.ReadReceiptsCacheV2(txRw, b, txNumReader)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	require.Equal(t, tx2.Hash(), got.TxHash)
-	require.Equal(t, r2.CumulativeGasUsed, got.CumulativeGasUsed)
-	require.Equal(t, header.Hash(), got.BlockHash)
-	require.Equal(t, header.Number.Uint64(), got.BlockNumber.Uint64())
+	require.Equal(t, got.Len(), 2)
+
+	r := got[1]
+
+	require.Equal(t, tx2.Hash(), r.TxHash)
+	require.Equal(t, r2.CumulativeGasUsed, r.CumulativeGasUsed)
+	require.Equal(t, header.Hash(), r.BlockHash)
+	require.Equal(t, header.Number.Uint64(), r.BlockNumber.Uint64())
 }
 
 // mockWithGenerator creates a chain with a number of explicitly defined blocks and

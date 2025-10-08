@@ -1287,42 +1287,6 @@ func ReadReceiptsCacheV2(tx kv.TemporalTx, block *types.Block, txNumReader rawdb
 	return res, nil
 }
 
-// ReadStateSyncReceiptByHash reads the state-sync receipt by its transaction hash within a specific block.
-// the state-sync transaction (if present) is always the last one in the block.
-// A state-sync receipt is identified if:
-//   - It has CumulativeGasUsed == 0, OR
-//   - Its CumulativeGasUsed equals that of the previous receipt (indicating zero gas usage).
-//
-// If no such receipt is found, nil is returned.
-func ReadStateSyncReceiptByHash(tx kv.TemporalTx, block *types.Block, txNumReader rawdbv3.TxNumsReader) (*types.Receipt, error) {
-	receipts, err := ReadReceiptsCacheV2(tx, block, txNumReader)
-	if err != nil {
-		return nil, err
-	}
-
-	n := len(receipts)
-	if n == 0 {
-		log.Info("ReadStateSyncReceiptByHash: no receipts found", "blockNumber", block.NumberU64())
-		return nil, nil
-	}
-
-	last := receipts[n-1]
-
-	// explicit zero cumulative gas => state-sync tx
-	if last.CumulativeGasUsed == 0 {
-		return last, nil
-	}
-
-	// equal cumulative gas as previous (zero gas usage) => state-sync tx
-	if n >= 2 && last.CumulativeGasUsed == receipts[n-2].CumulativeGasUsed {
-		return last, nil
-	}
-
-	log.Info("ReadStateSyncReceiptByHash: state-sync receipt not found", "blockNumber", block.NumberU64())
-
-	return nil, nil
-}
-
 func WriteReceiptCacheV2(tx kv.TemporalPutDel, receipt *types.Receipt, txNum uint64) error {
 	var toWrite []byte
 

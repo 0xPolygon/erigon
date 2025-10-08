@@ -23,6 +23,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/erigontech/erigon-lib/log/v3"
+
 	"sync/atomic"
 
 	"github.com/holiman/uint256"
@@ -179,7 +181,7 @@ func (evm *EVM) Interpreter() Interpreter {
 }
 
 func (evm *EVM) call(typ OpCode, caller ContractRef, addr common.Address, input []byte, gas uint64, value *uint256.Int, bailout bool) (ret []byte, leftOverGas uint64, err error) {
-	// logger := log.New()
+	logger := log.New()
 	// logger.Trace("EVM.call", "type", typ, "caller", caller.Address().Hex(), "addr", addr.Hex(), "input", fmt.Sprintf("0x%x", input), "gas", gas, "value", value, "bailout", bailout)
 	if evm.abort.Load() {
 		return ret, leftOverGas, nil
@@ -308,6 +310,7 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr common.Address, input 
 	// above we revert to the snapshot and consume any gas remaining. Additionally
 	// when we're in Homestead this also counts for code storage gas errors.
 	if err != nil || evm.config.RestoreState {
+		logger.Error("EVM.call reverting", "err", err, "depth", depth, "type", typ, "caller", caller.Address().Hex(), "addr", addr.Hex(), "gas", gas, "value", value, "bailout", bailout)
 		evm.intraBlockState.RevertToSnapshot(snapshot, err)
 		if err != ErrExecutionReverted {
 			if evm.config.Tracer != nil && evm.config.Tracer.OnGasChange != nil {

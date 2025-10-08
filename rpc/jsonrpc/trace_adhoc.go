@@ -1455,6 +1455,7 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 			// if tracer != nil {
 			// 	ibs.SetHooks(tracer.Hooks)
 			// }
+
 			txCtx := core.NewEVMTxContext(msg)
 			evm := vm.NewEVM(blockCtx, txCtx, ibs, chainConfig, vmConfig)
 			gp := new(core.GasPool).AddGas(msg.Gas()).AddBlobGas(msg.BlobGas())
@@ -1464,6 +1465,7 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 			// }
 			logger := log.New()
 			execResult, err = core.ApplyMessage(evm, msg, gp, true /* refunds */, gasBailout /* gasBailout */, engine)
+
 			logger.Error("traceBlock", "txIndex", txIndex, "from", msg.From().Hex(), "to", msg.To().Hex(), "failed", execResult.Failed(), "revert", execResult.Revert(), "gasBailout", gasBailout, "returnData", execResult.ReturnData, "msg", msg, "tx", txns[txIndex])
 		}
 		if err != nil {
@@ -1495,14 +1497,14 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 				return nil, nil, err
 			}
 		} else {
-			// if !txFinalized {
-			// 	if err = ibs.FinalizeTx(chainRules, noop); err != nil {
-			// 		return nil, nil, err
-			// 	}
-			// }
-			// if err = ibs.CommitBlock(chainRules, cachedWriter); err != nil {
-			// 	return nil, nil, err
-			// }
+			if !txFinalized {
+				if err = ibs.FinalizeTx(chainRules, noop); err != nil {
+					return nil, nil, err
+				}
+			}
+			if err = ibs.CommitBlock(chainRules, cachedWriter); err != nil {
+				return nil, nil, err
+			}
 		}
 		if !traceTypeTrace {
 			traceResult.Trace = []*ParityTrace{}

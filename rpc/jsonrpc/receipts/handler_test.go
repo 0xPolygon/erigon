@@ -302,7 +302,7 @@ func TestGetBlockReceipts(t *testing.T) {
 	}
 	// Assemble the test environment
 	m := mockWithGenerator(t, 4, generator)
-	receiptsGetter := receipts.NewGenerator(m.BlockReader, m.Engine, time.Minute)
+	receiptsGetter := receipts.NewGenerator(m.BlockReader, m.Engine, time.Minute, nil)
 	// Collect the hashes to request, and the response to expect
 	var (
 		hashes   []common.Hash

@@ -157,6 +157,8 @@ func NewBaseApi(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader serv
 		panic(err)
 	}
 
+	borReceiptGenerator := receipts.NewBorGenerator(blockReader, engine, bridgeReader)
+
 	return &BaseAPI{
 		filters:             f,
 		stateCache:          stateCache,
@@ -166,8 +168,8 @@ func NewBaseApi(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader serv
 		_txNumReader:        blockReader.TxnumReader(context.Background()),
 		evmCallTimeout:      evmCallTimeout,
 		_engine:             engine,
-		receiptsGenerator:   receipts.NewGenerator(blockReader, engine, evmCallTimeout),
-		borReceiptGenerator: receipts.NewBorGenerator(blockReader, engine),
+		receiptsGenerator:   receipts.NewGenerator(blockReader, engine, evmCallTimeout, borReceiptGenerator),
+		borReceiptGenerator: borReceiptGenerator,
 		dirs:                dirs,
 		bridgeReader:        bridgeReader,
 	}

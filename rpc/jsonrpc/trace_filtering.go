@@ -201,7 +201,7 @@ func (api *TraceAPIImpl) Block(ctx context.Context, blockNr rpc.BlockNumber, gas
 		return nil, err
 	}
 	signer := types.MakeSigner(cfg, blockNum, block.Time())
-	traces, syscall, err := api.callBlock(ctx, tx, block, []string{TraceTypeVmTrace}, *gasBailOut /* gasBailOut */, signer, cfg, traceConfig)
+	traces, syscall, err := api.callBlock(ctx, tx, block, []string{TraceTypeTrace}, *gasBailOut /* gasBailOut */, signer, cfg, traceConfig)
 	if err != nil {
 		return nil, err
 	}

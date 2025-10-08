@@ -28,6 +28,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/erigontech/erigon-lib/log/v3"
+
 	"github.com/holiman/uint256"
 
 	"github.com/erigontech/erigon-lib/chain"
@@ -1304,6 +1306,7 @@ func printAccount(EIP161Enabled bool, addr common.Address, stateObject *stateObj
 
 // FinalizeTx should be called after every transaction.
 func (sdb *IntraBlockState) FinalizeTx(chainRules *chain.Rules, stateWriter StateWriter) error {
+	logger := log.New()
 	for addr, bi := range sdb.balanceInc {
 		if !bi.transferred {
 			sdb.getStateObject(addr)
@@ -1320,7 +1323,7 @@ func (sdb *IntraBlockState) FinalizeTx(chainRules *chain.Rules, stateWriter Stat
 			// Thus, we can safely ignore it here
 			continue
 		}
-
+		logger.Error("FinalizeTx", "addr", addr.Hex(), "selfdestructed", so.selfdestructed, "createdContract", so.createdContract, "empty", so.empty(), "deleted", so.deleted, "isDirty", sdb.stateObjectsDirty[addr])
 		if err := updateAccount(chainRules.IsSpuriousDragon, chainRules.IsAura, stateWriter, addr, so, true, sdb.trace, sdb.tracingHooks); err != nil {
 			return err
 		}

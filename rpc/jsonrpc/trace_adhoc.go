@@ -1498,6 +1498,7 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 			}
 		} else {
 			if !txFinalized {
+				log.Error("FinalizeTx", "txIndex", txIndex)
 				if err = ibs.FinalizeTx(chainRules, noop); err != nil {
 					return nil, nil, err
 				}

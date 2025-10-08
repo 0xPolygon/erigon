@@ -1477,29 +1477,29 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 		// 	tracer.Hooks.OnTxEnd(&types.Receipt{GasUsed: execResult.GasUsed}, nil)
 		// }
 
-		// chainRules := chainConfig.Rules(blockCtx.BlockNumber, blockCtx.Time)
+		chainRules := chainConfig.Rules(blockCtx.BlockNumber, blockCtx.Time)
 		traceResult.Output = common.CopyBytes(execResult.ReturnData)
 		if traceTypeStateDiff {
 			initialIbs := state.New(cloneReader)
 			if !txFinalized {
-				// if err = ibs.FinalizeTx(chainRules, sd); err != nil {
-				// 	return nil, nil, err
-				// }
+				if err = ibs.FinalizeTx(chainRules, sd); err != nil {
+					return nil, nil, err
+				}
 			}
 			if sd != nil {
 				if err = sd.CompareStates(initialIbs, ibs); err != nil {
 					return nil, nil, err
 				}
 			}
-			// if err = ibs.CommitBlock(chainRules, cachedWriter); err != nil {
-			// 	return nil, nil, err
-			// }
-		} else {
-			if !txFinalized {
-				// if err = ibs.FinalizeTx(chainRules, noop); err != nil {
-				// 	return nil, nil, err
-				// }
+			if err = ibs.CommitBlock(chainRules, cachedWriter); err != nil {
+				return nil, nil, err
 			}
+		} else {
+			// if !txFinalized {
+			// 	if err = ibs.FinalizeTx(chainRules, noop); err != nil {
+			// 		return nil, nil, err
+			// 	}
+			// }
 			// if err = ibs.CommitBlock(chainRules, cachedWriter); err != nil {
 			// 	return nil, nil, err
 			// }

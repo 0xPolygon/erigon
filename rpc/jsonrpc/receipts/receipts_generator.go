@@ -46,6 +46,8 @@ type Generator struct {
 	blockReader services.FullBlockReader
 	txNumReader rawdbv3.TxNumsReader
 	engine      consensus.EngineReader
+
+	borGenerator *BorGenerator // to handle state-sync receipts only if needed
 }
 
 type ReceiptEnv struct {
@@ -63,7 +65,7 @@ var (
 	receiptsCacheTrace = dbg.EnvBool("R_LRU_TRACE", false)
 )
 
-func NewGenerator(blockReader services.FullBlockReader, engine consensus.EngineReader, evmTimeout time.Duration) *Generator {
+func NewGenerator(blockReader services.FullBlockReader, engine consensus.EngineReader, evmTimeout time.Duration, borGenerator *BorGenerator) *Generator {
 	receiptsCache, err := lru.New[common.Hash, types.Receipts](receiptsCacheLimit) //TODO: is handling both of them a good idea though...?
 	if err != nil {
 		panic(err)
@@ -88,6 +90,8 @@ func NewGenerator(blockReader services.FullBlockReader, engine consensus.EngineR
 
 		blockExecMutex: &loaderMutex[common.Hash]{},
 		txnExecMutex:   &loaderMutex[common.Hash]{},
+
+		borGenerator: borGenerator,
 	}
 }
 
@@ -289,8 +293,8 @@ func (g *Generator) GetReceipts(ctx context.Context, cfg *chain.Config, tx kv.Te
 	mu := g.blockExecMutex.lock(blockHash) // parallel requests of the same blockNum will be executed only once
 	defer g.blockExecMutex.unlock(mu, blockHash)
 
-	if receipts, ok := g.receiptsCache.Get(blockHash); ok {
-		return receipts, nil
+	if cachedReceipts, ok := g.receiptsCache.Get(blockHash); ok {
+		return cachedReceipts, nil
 	}
 
 	if !rpcDisableRCache {
@@ -319,6 +323,7 @@ func (g *Generator) GetReceipts(ctx context.Context, cfg *chain.Config, tx kv.Te
 	ctx, cancel := context.WithTimeout(ctx, g.evmTimeout)
 	defer cancel()
 
+	// Handle normal transactions
 	for i, txn := range block.Transactions() {
 		select {
 		case <-ctx.Done():
@@ -350,11 +355,19 @@ func (g *Generator) GetReceipts(ctx context.Context, cfg *chain.Config, tx kv.Te
 		}
 	}
 
-	// PIP-74: state sync addition
-	txs := block.Transactions()
-	if len(txs) > 0 {
-		if ssTxReceipt, err := rawdb.ReadStateSyncReceiptByHash(tx, block, g.txNumReader); err == nil && ssTxReceipt != nil {
-			receipts = append(receipts, ssTxReceipt)
+	// PIP-74: bor state sync receipts handling
+	if g.borGenerator != nil && cfg.Bor != nil {
+		// Extract events from block
+		events, err := g.extractBorEvents(ctx, block)
+		if err != nil {
+			return nil, fmt.Errorf("ReceiptGen.GetReceipts: failed to extract bor events for block %d: %w", block.NumberU64(), err)
+		}
+		if len(events) > 0 {
+			borReceipt, err := g.borGenerator.GenerateBorReceipt(ctx, tx, block, events, cfg)
+			if err != nil {
+				return nil, fmt.Errorf("ReceiptGen.GetReceipts: failed to generate bor receipt for block %d: %w", block.NumberU64(), err)
+			}
+			receipts = append(receipts, borReceipt)
 		}
 	}
 
@@ -425,6 +438,14 @@ func (g *Generator) GetReceiptsGasUsed(tx kv.TemporalTx, block *types.Block, txN
 	}
 
 	return receipts, nil
+}
+
+func (g *Generator) extractBorEvents(ctx context.Context, block *types.Block) ([]*types.Message, error) {
+	events, err := g.borGenerator.bridgeReader.Events(ctx, block.Hash(), block.NumberU64())
+	if err != nil {
+		return nil, err
+	}
+	return events, nil
 }
 
 type loaderMutex[K comparable] struct {

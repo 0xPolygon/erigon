@@ -21,14 +21,19 @@ import (
 	"github.com/erigontech/erigon/turbo/transactions"
 )
 
+type bridgeReader interface {
+	Events(ctx context.Context, blockHash common.Hash, blockNum uint64) ([]*types.Message, error)
+	EventTxnLookup(ctx context.Context, borTxHash common.Hash) (uint64, bool, error)
+}
+
 type BorGenerator struct {
 	receiptCache *lru.Cache[common.Hash, *types.Receipt]
 	blockReader  services.FullBlockReader
 	engine       consensus.EngineReader
+	bridgeReader bridgeReader
 }
 
-func NewBorGenerator(blockReader services.FullBlockReader,
-	engine consensus.EngineReader) *BorGenerator {
+func NewBorGenerator(blockReader services.FullBlockReader, engine consensus.EngineReader, bridgeReader bridgeReader) *BorGenerator {
 	receiptCache, err := lru.New[common.Hash, *types.Receipt](receiptsCacheLimit)
 	if err != nil {
 		panic(err)
@@ -38,6 +43,7 @@ func NewBorGenerator(blockReader services.FullBlockReader,
 		receiptCache: receiptCache,
 		blockReader:  blockReader,
 		engine:       engine,
+		bridgeReader: bridgeReader,
 	}
 }
 

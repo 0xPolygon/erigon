@@ -575,14 +575,26 @@ func (e receiptEncoder69) EncodeRLP(w io.Writer) error { return e.r.EncodeRLP69(
 
 func (rs Receipts) EncodeRLP69(w io.Writer) error {
 	encs := make([]receiptEncoder69, len(rs))
+	n := len(rs)
+
 	for i := range rs {
-		// state sync receipts have CumulativeGasUsed == 0 and Type == 0
-		// to avoid ambiguity, we force Type to 0 if CumulativeGasUsed == 0
-		if rs[i].CumulativeGasUsed == 0 {
-			rs[i].Type = 0
+		// copy the receipt reference
+		r := rs[i]
+
+		// only the last receipt can be a state-sync tx
+		if i == n-1 {
+			// Match the ReadStateSyncReceiptByHash logic:
+			// it's a ssTx if the cumulative gas is zero, or
+			// the equal cumulative gas is equal to the previous one (zero gas usage)
+			if r.CumulativeGasUsed == 0 ||
+				(n >= 2 && r.CumulativeGasUsed == rs[n-2].CumulativeGasUsed) {
+				r.Type = 0
+			}
 		}
-		encs[i] = receiptEncoder69{r: rs[i]}
+
+		encs[i] = receiptEncoder69{r: r}
 	}
+
 	return rlp.Encode(w, encs)
 }
 

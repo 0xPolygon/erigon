@@ -1351,10 +1351,9 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 
 	var tracer *tracers.Tracer
 	var tracingHooks *tracing.Hooks
+	blockCtx := transactions.NewEVMBlockContext(engine, header, parentNrOrHash.RequireCanonical, dbtx, api._blockReader, chainConfig)
 
 	for txIndex, msg := range msgs {
-		blockCtx := transactions.NewEVMBlockContext(engine, header, parentNrOrHash.RequireCanonical, dbtx, api._blockReader, chainConfig)
-
 		if isHistoricalStateReader {
 			historicalStateReader.SetTxNum(baseTxNum + uint64(txIndex))
 		}
@@ -1375,6 +1374,10 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 			default:
 				return nil, nil, fmt.Errorf("unrecognized trace type: %s", traceType)
 			}
+		}
+
+		if txIndex == 1 || txIndex == 2 {
+			traceTypeVmTrace = true
 		}
 
 		traceResult := &TraceCallResult{Trace: []*ParityTrace{}, TransactionHash: args.txHash}

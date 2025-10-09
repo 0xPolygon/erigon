@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"strings"
 
 	"github.com/holiman/uint256"
@@ -1293,6 +1294,24 @@ func (api *TraceAPIImpl) CallMany(ctx context.Context, calls json.RawMessage, pa
 	return trace, err
 }
 
+func WriteStringToFile(path string, content string) error {
+	// Create or truncate the file
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer file.Close()
+
+	// Write the string in chunks (efficient for very large strings)
+	_, err = file.WriteString(content)
+	if err != nil {
+		return fmt.Errorf("failed to write to file: %w", err)
+	}
+
+	// Flush and close
+	return file.Sync()
+}
+
 func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReader state.StateReader,
 	stateCache *shards.StateCache, cachedWriter state.StateWriter, ibs *state.IntraBlockState,
 	txns []types.Transaction, msgs []*types.Message, callParams []TraceCallParam,
@@ -1378,6 +1397,7 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 
 		if txIndex == 1 || txIndex == 2 {
 			traceTypeVmTrace = true
+			traceTypeStateDiff = true
 		}
 
 		traceResult := &TraceCallResult{Trace: []*ParityTrace{}, TransactionHash: args.txHash}
@@ -1480,6 +1500,13 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 
 		if tracer != nil && tracer.Hooks.OnTxEnd != nil {
 			tracer.Hooks.OnTxEnd(&types.Receipt{GasUsed: execResult.GasUsed}, nil)
+		}
+
+		if txIndex == 1 || txIndex == 2 {
+			vmTraceStr, _ := json.MarshalIndent(traceResult.VmTrace, "", "  ")
+			WriteStringToFile(fmt.Sprintf("/home/ubuntu/traceBlock-tx%d-vmTrace.json", txIndex), string(vmTraceStr))
+			stateDiffStr, _ := json.MarshalIndent(traceResult.StateDiff, "", "  ")
+			WriteStringToFile(fmt.Sprintf("/home/ubuntu/traceBlock-tx%d-stateDiff.json", txIndex), string(stateDiffStr))
 		}
 
 		chainRules := chainConfig.Rules(blockCtx.BlockNumber, blockCtx.Time)

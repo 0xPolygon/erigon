@@ -1502,13 +1502,6 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 			tracer.Hooks.OnTxEnd(&types.Receipt{GasUsed: execResult.GasUsed}, nil)
 		}
 
-		if txIndex == 1 || txIndex == 2 {
-			vmTraceStr, _ := json.MarshalIndent(traceResult.VmTrace, "", "  ")
-			WriteStringToFile(fmt.Sprintf("/home/ubuntu/traceBlock-tx%d-vmTrace.json", txIndex), string(vmTraceStr))
-			stateDiffStr, _ := json.MarshalIndent(traceResult.StateDiff, "", "  ")
-			WriteStringToFile(fmt.Sprintf("/home/ubuntu/traceBlock-tx%d-stateDiff.json", txIndex), string(stateDiffStr))
-		}
-
 		chainRules := chainConfig.Rules(blockCtx.BlockNumber, blockCtx.Time)
 		traceResult.Output = common.CopyBytes(execResult.ReturnData)
 		if traceTypeStateDiff {
@@ -1529,11 +1522,11 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 		} else {
 			if !txFinalized {
 				log.Error("FinalizeTx", "txIndex", txIndex)
-				if err = ibs.FinalizeTx(chainRules, noop); err != nil {
+				if err = ibs.FinalizeTx(chainRules, finalizeTxStateWriter); err != nil {
 					return nil, nil, err
 				}
 			}
-			if err = ibs.CommitBlock(chainRules, cachedWriter); err != nil {
+			if err = ibs.CommitBlock(chainRules, finalizeTxStateWriter); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -1541,6 +1534,13 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 			traceResult.Trace = []*ParityTrace{}
 		}
 		results = append(results, traceResult)
+
+		if txIndex == 1 || txIndex == 2 {
+			vmTraceStr, _ := json.MarshalIndent(traceResult.VmTrace, "", "  ")
+			WriteStringToFile(fmt.Sprintf("/home/ubuntu/traceBlock-tx%d-vmTrace.json", txIndex), string(vmTraceStr))
+			stateDiffStr, _ := json.MarshalIndent(traceResult.StateDiff, "", "  ")
+			WriteStringToFile(fmt.Sprintf("/home/ubuntu/traceBlock-tx%d-stateDiff.json", txIndex), string(stateDiffStr))
+		}
 	}
 
 	return results, tracingHooks, nil

@@ -1442,7 +1442,6 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 			sd = &StateDiff{sdMap: sdMap}
 		}
 
-		ibs.Reset()
 		var finalizeTxStateWriter state.StateWriter
 		if sd != nil {
 			finalizeTxStateWriter = sd
@@ -1542,9 +1541,9 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 			WriteStringToFile(fmt.Sprintf("/home/ubuntu/traceBlock-tx%d-stateDiff.json", txIndex), string(stateDiffStr))
 		}
 
-		if txIndex == 1 {
-			ibs.Reset()
-		}
+		// if txIndex == 1 {
+		// 	ibs.Reset()
+		// }
 	}
 
 	return results, tracingHooks, nil

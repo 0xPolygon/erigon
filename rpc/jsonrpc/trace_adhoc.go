@@ -1541,6 +1541,10 @@ func (api *TraceAPIImpl) doCallBlock(ctx context.Context, dbtx kv.Tx, stateReade
 			stateDiffStr, _ := json.MarshalIndent(traceResult.StateDiff, "", "  ")
 			WriteStringToFile(fmt.Sprintf("/home/ubuntu/traceBlock-tx%d-stateDiff.json", txIndex), string(stateDiffStr))
 		}
+
+		if txIndex == 1 {
+			ibs.Reset()
+		}
 	}
 
 	return results, tracingHooks, nil

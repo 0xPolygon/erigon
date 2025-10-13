@@ -209,7 +209,7 @@ func ExecuteBlockEphemerally(
 			logs = append(logs, receipt.Logs...)
 		}
 
-		// PIP-74 state sync receipt handling
+		// PIP-74 state-sync receipt handling.
 		stateSyncReceipt := &types.Receipt{}
 		if chainConfig.Consensus == chain.BorConsensus && len(blockLogs) > 0 {
 			slices.SortStableFunc(blockLogs, func(i, j *types.Log) int { return cmp.Compare(i.Index, j.Index) })

@@ -442,6 +442,7 @@ func MockWithEverything(tb testing.TB, gspec *types.Genesis, key *ecdsa.PrivateK
 		maxBlockBroadcastPeers,
 		false, /* disableBlockDownload */
 		false, /* enableWitProtocol */
+		nil,   /* bridgeReader */
 		logger,
 	)
 	if err != nil {

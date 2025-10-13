@@ -717,6 +717,14 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 		}
 	}
 
+	// Create bridge.Reader for P2P state sync receipts.
+	// When Erigon nodes serve receipts to peers via P2P, they need bridge.Reader
+	// to include state sync transaction receipts in the response.
+	var bridgeReaderForP2P *bridge.Reader
+	if bridgeStore != nil && chainConfig.Bor != nil {
+		bridgeReaderForP2P = bridge.NewReader(bridgeStore, logger, chainConfig.Bor.StateReceiverContractAddress())
+	}
+
 	sentryMcDisableBlockDownload := chainConfig.Bor != nil || config.ElBlockDownloaderV2
 	backend.sentriesClient, err = sentry_multi_client.NewMultiClient(
 		backend.chainDB,
@@ -731,6 +739,7 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 		maxBlockBroadcastPeers,
 		sentryMcDisableBlockDownload,
 		stack.Config().P2P.EnableWitProtocol,
+		bridgeReaderForP2P,
 		logger,
 	)
 	if err != nil {

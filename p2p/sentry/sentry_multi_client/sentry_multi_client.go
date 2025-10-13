@@ -284,9 +284,8 @@ type MultiClient struct {
 
 var _ eth.ReceiptsGetter = new(receipts.Generator) // compile-time interface-check
 
-// BridgeReader interface for reading bridge events (state sync).
-// Matches the bridgeReader interface required by BorGenerator.
-type BridgeReader interface {
+// bridgeReader interface for reading bridge events (state sync).
+type bridgeReader interface {
 	Events(ctx context.Context, blockHash common.Hash, blockNum uint64) ([]*types.Message, error)
 	EventTxnLookup(ctx context.Context, borTxHash common.Hash) (uint64, bool, error)
 }
@@ -304,7 +303,7 @@ func NewMultiClient(
 	maxBlockBroadcastPeers func(*types.Header) uint,
 	disableBlockDownload bool,
 	enableWitProtocol bool,
-	bridgeReader BridgeReader,
+	bridgeReader bridgeReader,
 	logger log.Logger,
 ) (*MultiClient, error) {
 	// header downloader

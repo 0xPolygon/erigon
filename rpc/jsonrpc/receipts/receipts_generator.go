@@ -355,9 +355,9 @@ func (g *Generator) GetReceipts(ctx context.Context, cfg *chain.Config, tx kv.Te
 		}
 	}
 
-	// PIP-74: bor state sync receipts handling
+	// PIP-74: state-sync receipt handling.
 	if g.borGenerator != nil && cfg.Bor != nil {
-		// Extract events from block
+		// Extract state-sync events from block.
 		events, err := g.extractBorEvents(ctx, block)
 		if err != nil {
 			return nil, fmt.Errorf("ReceiptGen.GetReceipts: failed to extract bor events for block %d: %w", block.NumberU64(), err)

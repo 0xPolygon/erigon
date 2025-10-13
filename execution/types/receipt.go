@@ -578,16 +578,15 @@ func (rs Receipts) EncodeRLP69(w io.Writer) error {
 	n := len(rs)
 
 	for i := range rs {
-		// copy the receipt reference
+		// Copy the receipt reference.
 		r := rs[i]
 
-		// only the last receipt can be a state-sync tx
+		// Only the last receipt can be a state-sync tx.
 		if i == n-1 {
 			// Match the ReadStateSyncReceiptByHash logic:
-			// it's a ssTx if the cumulative gas is zero, or
+			// It's a state-sync transaction if the cumulative gas is zero, or
 			// the equal cumulative gas is equal to the previous one (zero gas usage)
-			if r.CumulativeGasUsed == 0 ||
-				(n >= 2 && r.CumulativeGasUsed == rs[n-2].CumulativeGasUsed) {
+			if r.CumulativeGasUsed == 0 || (n >= 2 && r.CumulativeGasUsed == rs[n-2].CumulativeGasUsed) {
 				r.Type = 0
 			}
 		}

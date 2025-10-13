@@ -284,6 +284,13 @@ type MultiClient struct {
 
 var _ eth.ReceiptsGetter = new(receipts.Generator) // compile-time interface-check
 
+// BridgeReader interface for reading bridge events (state sync).
+// Matches the bridgeReader interface required by BorGenerator.
+type BridgeReader interface {
+	Events(ctx context.Context, blockHash common.Hash, blockNum uint64) ([]*types.Message, error)
+	EventTxnLookup(ctx context.Context, borTxHash common.Hash) (uint64, bool, error)
+}
+
 func NewMultiClient(
 	db kv.TemporalRoDB,
 	chainConfig *chain.Config,
@@ -297,6 +304,7 @@ func NewMultiClient(
 	maxBlockBroadcastPeers func(*types.Header) uint,
 	disableBlockDownload bool,
 	enableWitProtocol bool,
+	bridgeReader BridgeReader,
 	logger log.Logger,
 ) (*MultiClient, error) {
 	// header downloader
@@ -338,6 +346,13 @@ func NewMultiClient(
 		witnessBuffer = stagedsync.NewWitnessBuffer()
 	}
 
+	// Create BorGenerator for state sync receipts if bridgeReader is provided.
+	// This is required for Erigon to include state sync transaction receipts in P2P GetReceipts responses.
+	var borGenerator *receipts.BorGenerator
+	if bridgeReader != nil {
+		borGenerator = receipts.NewBorGenerator(blockReader, engine, bridgeReader)
+	}
+
 	cs := &MultiClient{
 		Hd:                                hd,
 		Bd:                                bd,
@@ -354,7 +369,7 @@ func NewMultiClient(
 		disableBlockDownload:              disableBlockDownload,
 		logger:                            logger,
 		getReceiptsActiveGoroutineNumber:  semaphore.NewWeighted(1),
-		ethApiWrapper:                     receipts.NewGenerator(blockReader, engine, 5*time.Minute, nil),
+		ethApiWrapper:                     receipts.NewGenerator(blockReader, engine, 5*time.Minute, borGenerator),
 	}
 
 	return cs, nil

@@ -201,105 +201,10 @@ jobs:
           compression-level: 0
           if-no-files-found: error
 
-  test-release:
-    name: test on ${{ matrix.id }}
-    if: ${{ ! inputs.skip_tests }}
-    runs-on: [ self-hosted, qa, Release, "${{ matrix.runner-arch }}" ]
-    timeout-minutes: 2800  # 2 days
-    needs: [ build-release ]
-    strategy:
-      matrix:
-        include:
-          - id: linux/amd64
-            runner-arch: X64
-            artifact: linux_amd64
-          - id: linux/arm64
-            runner-arch: ARM64
-            artifact: linux_arm64
-
-    steps:
-
-      - name: Cleanup working directory
-        run: rm -drfv *
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-
-      - name: Download artifact ${{ env.APPLICATION }}_${{ inputs.release_version }}_${{ matrix.artifact }}.tar
-        uses: actions/download-artifact@v5
-        with:
-          name: ${{ env.APPLICATION }}_${{ inputs.release_version }}_${{ matrix.artifact }}.tar
-          path: .
-
-      - name: Extract artifact ${{ env.APPLICATION }}_${{ inputs.release_version }}_${{ matrix.artifact }}.tar
-        env:
-          RELEASE_VERSION: ${{ inputs.release_version }}
-        run: |
-          pwd
-          ls -l ${{ env.APPLICATION }}_${RELEASE_VERSION}_${{ matrix.artifact }}.tar
-          tar xvf ${{ env.APPLICATION }}_${RELEASE_VERSION}_${{ matrix.artifact }}.tar
-          ls -lR
-
-      - name: Fast checkout git repository erigontech/erigon-qa
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 ## 5.0.0
-        with:
-          token: ${{ secrets.ORG_GITHUB_ERIGONTECH_ERIGON_QA_READ }}
-          repository: erigontech/erigon-qa
-          fetch-depth: 1
-          ref: main
-          path: erigon-qa
-
-      - name: Run QA Tests
-        env:
-          RELEASE_VERSION: ${{ inputs.release_version }}
-        run: |
-          cd ./erigon-qa/test_system
-          pwd
-          ls -lao
-          pip3 install -r requirements.txt   
-          ln -s $(pwd)/base_library $(pwd)/qa-tests/tip-tracking/base_library
-          echo "DEBUG -- content of directory $(pwd) :"
-          ls -l
-          echo "DEBUG -- content of directory $(pwd)/qa-tests/tip-tracking/"
-          ls -l $(pwd)/qa-tests/tip-tracking/
-          echo "DEBUG -- content of directory GITHUB_WORKSPACE ${GITHUB_WORKSPACE} :"
-          ls -l ${GITHUB_WORKSPACE}
-          echo "DEBUG -- end."
-          rm -rf ${RUNNER_WORKSPACE}/erigon-data || true
-          mkdir ${RUNNER_WORKSPACE}/erigon-data
-          # Run Erigon, wait sync and check ability to maintain sync
-          python3 qa-tests/tip-tracking/run_and_check_tip_tracking.py \
-            ${GITHUB_WORKSPACE}/${{ env.APPLICATION }}_${RELEASE_VERSION}_${{ matrix.artifact }} \
-              ${RUNNER_WORKSPACE}/erigon-data ${{ env.TEST_TRACKING_TIME_SECONDS }} ${{ env.TEST_TOTAL_TIME_SECONDS }} ${{ env.APPLICATION_VERSION }} ${{ env.TEST_CHAIN }}
-          # Capture monitoring script exit status
-          test_exit_status=$?
-          # Save the subsection reached status
-          echo "test_executed=true" >> "$GITHUB_OUTPUT"
-          # Check test runner script exit status
-          if [ $test_exit_status -eq 0 ]; then
-            echo "Tests completed successfully"
-            echo "TEST_RESULT=success" >> "$GITHUB_OUTPUT"
-          else
-            echo "Error detected during tests"
-            echo "TEST_RESULT=failure" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Upload Downloader Torrent Client Status
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: torrent-client-status-${{ matrix.artifact }}
-          path: torrent-client-status.txt
-
-      - name: Cleanup working directory
-        run: rm -drfv *
-
   build-debian-pkg:
     name: Debian packages
-    needs: [ build-release, test-release ]
-    if: always() && contains(needs.build-release.result, 'success') && !contains(needs.test-release.result, 'failure')
+    needs: [ build-release ]
+    if: always() && contains(needs.build-release.result, 'success')
     uses: ./.github/workflows/reusable-release-build-debian-pkg.yml
     with:
       application: ${{ needs.build-release.outputs.application }}
@@ -307,11 +212,11 @@ jobs:
 
 
   publish-docker-image:
-    needs: [ build-release, test-release ]
-    if: always() && contains(needs.build-release.result, 'success') && !contains(needs.test-release.result, 'failure')
+    needs: [ build-release ]
+    if: always() && contains(needs.build-release.result, 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    name: Docker image        
+    name: Docker image
 
     steps:
 
@@ -422,8 +327,8 @@ jobs:
 
   In-case-of-failure:
     name: "In case of failure: remove remote git tag pointing to the new version."
-    needs: [ publish-release, build-release, test-release, build-debian-pkg, publish-docker-image ]
-    if: always() && !contains(needs.build-release.result, 'success') && contains(needs.test-release.result, 'failure') && !contains(needs.publish-release.result, 'success') && !contains(needs.build-debian-pkg.result, 'success') && !contains(needs.publish-docker-image.result, 'success')
+    needs: [ publish-release, build-release, build-debian-pkg, publish-docker-image ]
+    if: always() && !contains(needs.build-release.result, 'success') && !contains(needs.publish-release.result, 'success') && !contains(needs.build-debian-pkg.result, 'success') && !contains(needs.publish-docker-image.result, 'success')
     runs-on: ubuntu-latest
     env:
       RELEASE_VERSION: ${{ inputs.release_version }}

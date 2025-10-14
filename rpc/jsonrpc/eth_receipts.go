@@ -527,13 +527,27 @@ func (api *APIImpl) GetBlockReceipts(ctx context.Context, numberOrHash rpc.Block
 	if err != nil {
 		return nil, fmt.Errorf("getReceipts error: %w", err)
 	}
+
+	numTxs := len(block.Transactions())
 	result := make([]map[string]interface{}, 0, len(receipts))
+
 	for _, receipt := range receipts {
-		txn := block.Transactions()[receipt.TransactionIndex]
-		result = append(result, ethutils.MarshalReceipt(receipt, txn, chainConfig, block.HeaderNoCopy(), txn.Hash(), true, true))
+		// State-sync receipts' TransactionIndex is equal to numTxs.
+		if int(receipt.TransactionIndex) == numTxs {
+			// This is a state-sync transaction receipt.
+			result = append(result, ethutils.MarshalReceipt(receipt, bortypes.NewBorTransaction(), chainConfig, block.HeaderNoCopy(), receipt.TxHash, false, true))
+		} else {
+			// This is a normal transaction receipt.
+			txn := block.Transactions()[receipt.TransactionIndex]
+			result = append(result, ethutils.MarshalReceipt(receipt, txn, chainConfig, block.HeaderNoCopy(), txn.Hash(), true, true))
+		}
 	}
 
-	if chainConfig.Bor != nil {
+	// TODO: Change Rio to the actual hard fork.
+	// Rio fork (or later) includes state-sync receipts in block execution.
+	// For blocks >= Rio: receipts already include the state-sync receipts.
+	// For blocks < Rio: old cached data doesn't include the state-sync receipts, generate on-the-fly.
+	if chainConfig.Bor != nil && !chainConfig.Bor.IsRio(blockNum) && len(receipts) == numTxs {
 		events, err := api.bridgeReader.Events(ctx, block.Hash(), blockNum)
 		if err != nil {
 			return nil, err

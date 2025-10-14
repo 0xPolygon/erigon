@@ -372,7 +372,7 @@ func (s *Sync) applyNewBlockChainOnTip(ctx context.Context, blockChain []*types.
 		go s.p2pService.PublishNewBlockHashes(newBlock)
 	}
 
-	if source == EventSourceP2PNewBlock {
+	if source == EventSourceP2PNewBlock || source == EventSourceP2PNewBlockHashes {
 		// https://github.com/ethereum/devp2p/blob/master/caps/eth.md#block-propagation
 		// devp2p spec: when a NewBlock announcement message is received from a peer, the client first verifies the
 		// basic header validity of the block, checking whether the proof-of-work value is valid (replace PoW
@@ -400,7 +400,7 @@ func (s *Sync) applyNewBlockChainOnTip(ctx context.Context, blockChain []*types.
 		return err
 	}
 
-	if source == EventSourceP2PNewBlock {
+	if source == EventSourceP2PNewBlock || source == EventSourceP2PNewBlockHashes {
 		// https://github.com/ethereum/devp2p/blob/master/caps/eth.md#block-propagation
 		// devp2p spec: After the header validity check, the client imports the block into its local chain by executing
 		// all transactions contained in the block, computing the block's 'post state'. The block's state-root hash

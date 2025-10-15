@@ -528,8 +528,9 @@ func (api *APIImpl) GetBlockReceipts(ctx context.Context, numberOrHash rpc.Block
 		return nil, fmt.Errorf("getReceipts error: %w", err)
 	}
 
+	numReceipts := len(receipts)
 	numTxs := len(block.Transactions())
-	result := make([]map[string]interface{}, 0, len(receipts))
+	result := make([]map[string]interface{}, 0, numReceipts)
 
 	for _, receipt := range receipts {
 		// State-sync receipts' TransactionIndex is equal to numTxs.
@@ -543,11 +544,8 @@ func (api *APIImpl) GetBlockReceipts(ctx context.Context, numberOrHash rpc.Block
 		}
 	}
 
-	// TODO: Change Rio to the actual hard fork.
-	// Rio fork (or later) includes state-sync receipts in block execution.
-	// For blocks >= Rio: receipts already include the state-sync receipts.
-	// For blocks < Rio: old cached data doesn't include the state-sync receipts, generate on-the-fly.
-	if chainConfig.Bor != nil && !chainConfig.Bor.IsRio(blockNum) && len(receipts) == numTxs {
+	// If numReceipts equals numTxs, state-sync receipt is missing (old cached data).
+	if chainConfig.Bor != nil && numReceipts == numTxs {
 		events, err := api.bridgeReader.Events(ctx, block.Hash(), blockNum)
 		if err != nil {
 			return nil, err

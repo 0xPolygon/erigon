@@ -28,7 +28,7 @@ import (
 // BorConfig is the consensus engine configs for bor-based sealing.
 type BorConfig struct {
 	Period                map[string]uint64 `json:"period"`                // Number of seconds between blocks to enforce
-	ProducerDelay         map[string]uint64 `json:"producerDelay"`         // Number of seconds-delay between two producers'
+	ProducerDelay         map[string]uint64 `json:"producerDelay"`         // Number of seconds between two producers' intervals
 	Sprint                map[string]uint64 `json:"sprint"`                // Epoch length to proposer
 	BackupMultiplier      map[string]uint64 `json:"backupMultiplier"`      // Backup multiplier to determine the wiggle time
 	ValidatorContract     string            `json:"validatorContract"`     // Validator set contract
@@ -45,7 +45,7 @@ type BorConfig struct {
 	AhmedabadBlock *big.Int `json:"ahmedabadBlock"` // Ahmedabad switch block (nil = no fork, 0 = already on Ahmedabad)
 	BhilaiBlock    *big.Int `json:"bhilaiBlock"`    // Bhilai switch block (nil = no fork, 0 = already on Ahmedabad)
 	RioBlock       *big.Int `json:"rioBlock"`       // Rio switch block (nil = no fork, 0 = already on Rio)
-	StateSyncBlock *big.Int `json:"stateSyncBlock"` // StateSync switch block (nil = no fork, 0 = already on StateSync) // TODO define better name
+	StateSyncBlock *big.Int `json:"stateSyncBlock"` // StateSync switch block (nil = no fork, 0 = already on StateSync) // TODO: Define better name
 
 	StateSyncConfirmationDelay map[string]uint64         `json:"stateSyncConfirmationDelay"` // StateSync Confirmation Delay, in seconds, to calculate `to`
 	Coinbase                   map[string]common.Address `json:"coinbase"`                   // coinbase address

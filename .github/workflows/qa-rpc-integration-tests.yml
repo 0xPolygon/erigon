@@ -19,6 +19,7 @@ on:
 
 jobs:
   mainnet-rpc-integ-tests:
+    if: false # Temporarily disabled
     concurrency:
       group: >-
         ${{

@@ -798,7 +798,7 @@ func (c *Bor) CalculateRewards(_ *chain.Config, _ *types.Header, _ []*types.Head
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
 func (c *Bor) Finalize(_ *chain.Config, header *types.Header, state *state.IntraBlockState,
-	_ types.Transactions, _ []*types.Header, _ types.Receipts, withdrawals []*types.Withdrawal,
+	txs types.Transactions, _ []*types.Header, receipts types.Receipts, withdrawals []*types.Withdrawal,
 	chain consensus.ChainReader, syscall consensus.SystemCall, _ bool, _ log.Logger,
 ) (types.FlatRequests, error) {
 	headerNumber := header.Number.Uint64()
@@ -841,7 +841,14 @@ func (c *Bor) Finalize(_ *chain.Config, header *types.Header, state *state.Intra
 		return nil, err
 	}
 
-	// PIP-74: Finalize does not append txs/receipts (that’s done in FinalizeAndAssemble)
+	if c.config.IsStateSync(headerNumber) && len(txs) > 0 {
+		lastTx := txs[len(txs)-1]
+		if lastTx.Type() == types.StateSyncTxType && receipts[len(txs)-1] == nil {
+			prevReceipts := receipts[:len(txs)-1]
+			stateSyncReceipt := newStateSyncReceipt(lastTx, prevReceipts, state, header, txs)
+			receipts[len(txs)-1] = stateSyncReceipt
+		}
+	}
 
 	return nil, nil
 }
@@ -920,7 +927,7 @@ func (c *Bor) FinalizeAndAssemble(
 		return nil, nil, err
 	}
 
-	// PIP-74: append StateSyncTx and receipt post-fork if any events executed
+	// PIP-74: append StateSyncTx and receipt post-fork if any state-sync events executed.
 	if c.config.IsStateSync(headerNumber) && len(execStateSync) > 0 {
 		c.logger.Info("FinalizeAndAssemble: Appending state sync txs", "count", len(execStateSync))
 		stateSyncTx := &types.StateSyncTx{StateSyncData: execStateSync}

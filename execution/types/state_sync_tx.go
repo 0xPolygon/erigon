@@ -65,31 +65,33 @@ func (tx *StateSyncTx) GetTo() *common.Address {
 
 func (tx *StateSyncTx) AsMessage(_ Signer, baseFee *big.Int, rules *chain.Rules) (*Message, error) {
 	if !rules.IsStateSync {
-		// TODO change to better name when we have a hard fork for this
+		// TODO: Change to a better name when we have a hard fork for this.
 		return nil, errors.New("StateSync typed tx requires StateSync hard fork")
 	}
+
 	msg := Message{
+		to:         &common.Address{},
+		from:       common.Address{},
 		nonce:      0,
+		amount:     *uint256.NewInt(0),
 		gasLimit:   0,
 		gasPrice:   *uint256.NewInt(0),
-		tipCap:     *uint256.NewInt(0),
 		feeCap:     *uint256.NewInt(0),
-		to:         tx.GetTo(),
-		amount:     *uint256.NewInt(0),
+		tipCap:     *uint256.NewInt(0),
 		data:       []byte{},
 		accessList: nil,
 		checkNonce: false,
 	}
+
 	if baseFee != nil {
 		_ = msg.gasPrice.SetFromBig(baseFee)
 	}
 
-	msg.from = common.Address{}
 	return &msg, nil
 }
 
 func (tx *StateSyncTx) WithSignature(_ Signer, _ []byte) (Transaction, error) {
-	return nil, errors.New("StateSyncTx are not signed")
+	return nil, errors.New("StateSyncTx is not signed")
 }
 
 func (tx *StateSyncTx) Hash() common.Hash {
@@ -105,7 +107,7 @@ func (tx *StateSyncTx) Hash() common.Hash {
 }
 
 func (tx *StateSyncTx) SigningHash(_ *big.Int) common.Hash {
-	// StateSync txs are never signed, return canonical hash
+	// StateSync txs are never signed, return canonical hash.
 	return tx.Hash()
 }
 
@@ -132,24 +134,26 @@ func (tx *StateSyncTx) RawSignatureValues() (*uint256.Int, *uint256.Int, *uint25
 func (tx *StateSyncTx) EncodingSize() int {
 	var b bytes.Buffer
 	_ = tx.encode(&b)
-	return 1 + b.Len()
+	data := make([]byte, 1+b.Len())
+	return rlp.StringLen(data)
 }
 
-// EncodeRLP writes the inner payload ([]StateSyncData) without the type prefix.
+// EncodeRLP implements rlp.Encoder for database storage.
 func (tx *StateSyncTx) EncodeRLP(w io.Writer) error {
 	if tx == nil {
 		return errors.New("nil StateSyncTx")
 	}
 	var buf bytes.Buffer
+	buf.WriteByte(StateSyncTxType)
 	if err := tx.encode(&buf); err != nil {
 		return err
 	}
-	_, err := w.Write(buf.Bytes())
-	return err
+	b := newEncodingBuf()
+	defer pooledBuf.Put(b)
+	return rlp.EncodeString(buf.Bytes(), w, b[:])
 }
 
-// DecodeRLP consumes the RLP stream and populates tx.StateSyncData.
-// The type byte (0x7F) is already stripped by the UnmarshalTransaction path.
+// DecodeRLP implements rlp.Decoder.
 func (tx *StateSyncTx) DecodeRLP(s *rlp.Stream) error {
 	raw, err := s.Raw()
 	if err != nil {
@@ -158,11 +162,20 @@ func (tx *StateSyncTx) DecodeRLP(s *rlp.Stream) error {
 	return tx.decode(raw)
 }
 
+// MarshalBinary returns the canonical encoding for network transmission.
 func (tx *StateSyncTx) MarshalBinary(w io.Writer) error {
+	if tx == nil {
+		return errors.New("nil StateSyncTx")
+	}
 	if _, err := w.Write([]byte{StateSyncTxType}); err != nil {
 		return err
 	}
-	return tx.EncodeRLP(w)
+	var payloadBuf bytes.Buffer
+	if err := tx.encode(&payloadBuf); err != nil {
+		return err
+	}
+	_, err := w.Write(payloadBuf.Bytes())
+	return err
 }
 
 func (tx *StateSyncTx) Sender(_ Signer) (common.Address, error) {
@@ -178,7 +191,7 @@ func (tx *StateSyncTx) GetSender() (common.Address, bool) {
 }
 
 func (tx *StateSyncTx) SetSender(_ common.Address) {
-	// no-op, StateSyncTx has no sender
+	// no-op, StateSyncTx has no sender.
 }
 
 func (tx *StateSyncTx) IsContractDeploy() bool {
@@ -226,7 +239,7 @@ func (tx *StateSyncTx) encode(buf *bytes.Buffer) error {
 	if tx == nil {
 		return errors.New("nil StateSyncTx")
 	}
-	// Validate ascending and contiguous IDs as per PIP-74
+	// Validate ascending and contiguous IDs as per PIP-74.
 	var prev uint64
 	for i, d := range tx.StateSyncData {
 		if d == nil {
@@ -253,7 +266,7 @@ func (tx *StateSyncTx) decode(b []byte) error {
 	if err := rlp.DecodeBytes(b, &dec); err != nil {
 		return err
 	}
-	// Validate ascending and contiguous IDs as per PIP-74
+	// Validate ascending and contiguous IDs as per PIP-74.
 	if len(dec) > 0 {
 		prev := dec[0].ID
 		for i := 1; i < len(dec); i++ {

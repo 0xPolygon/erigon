@@ -353,6 +353,12 @@ func recoverSenders(ctx context.Context, logPrefix string, cryptoContext *secp25
 		signer := types.MakeSigner(config, job.blockNumber, job.blockTime)
 		job.senders = make([]byte, len(body.Transactions)*length.Addr)
 		for i, txn := range body.Transactions {
+			// Skip StateSyncTx - they have no sender.
+			if txn.Type() == types.StateSyncTxType {
+				// Leave sender as zero address
+				continue
+			}
+
 			from, err := signer.SenderWithContext(cryptoContext, txn)
 			if err != nil {
 				job.err = fmt.Errorf("%w: error recovering sender for tx=%x, %v",

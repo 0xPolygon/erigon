@@ -1463,17 +1463,27 @@ func newStateSyncReceipt(tx types.Transaction, prev types.Receipts, state *state
 	logsFromReceiptCount := countLogsFromReceipts(prev)
 	stateSyncLogs := allLogs[logsFromReceiptCount:]
 
+	// Fix log TxIndex - logs inherit TxIndex from state context during CommitStates.
+	txIndex := uint(len(txs) - 1)
+	for _, l := range stateSyncLogs {
+		l.TxIndex = txIndex
+	}
+
 	r := &types.Receipt{
 		Type:              tx.Type(),
 		Status:            types.ReceiptStatusSuccessful,
 		CumulativeGasUsed: header.GasUsed,
-		GasUsed:           0,
-		TxHash:            tx.Hash(),
 		Logs:              stateSyncLogs,
-		BlockNumber:       header.Number,
-		TransactionIndex:  uint(len(txs) - 1),
+		// Implementation fields
+		TxHash:  tx.Hash(),
+		GasUsed: 0,
+		// Inclusion information
+		BlockHash:        header.Hash(),
+		BlockNumber:      header.Number,
+		TransactionIndex: txIndex,
 	}
 	r.Bloom = types.CreateBloom(types.Receipts{r})
+
 	return r
 }
 

@@ -24,7 +24,7 @@ func (tx *StateSyncTx) Type() byte {
 }
 
 func (tx *StateSyncTx) GetChainID() *uint256.Int {
-	panic("chainID called from StateSyncTx")
+	return nil
 }
 
 func (tx *StateSyncTx) GetNonce() uint64 {

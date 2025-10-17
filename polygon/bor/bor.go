@@ -1478,8 +1478,6 @@ func newStateSyncReceipt(tx types.Transaction, prev types.Receipts, state *state
 		TxHash:  tx.Hash(),
 		GasUsed: 0,
 		// Inclusion information
-		BlockHash:        header.Hash(),
-		BlockNumber:      header.Number,
 		TransactionIndex: txIndex,
 	}
 	r.Bloom = types.CreateBloom(types.Receipts{r})

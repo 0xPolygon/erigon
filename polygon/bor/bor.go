@@ -1458,10 +1458,10 @@ func VerifyUncles(uncles []*types.Header) error {
 
 // newStateSyncReceipt creates a new receipt for the StateSyncTx
 func newStateSyncReceipt(tx types.Transaction, prev types.Receipts, state *state.IntraBlockState, header *types.Header, txs types.Transactions) *types.Receipt {
-	// Slice logs since previous receipts
-	allLogs := state.Logs()
-	logsFromReceiptCount := countLogsFromReceipts(prev)
-	stateSyncLogs := allLogs[logsFromReceiptCount:]
+	// state.Logs() only contains the state sync logs.
+	// regular tx logs are already in their receipts, not in state.
+	// Here, state is the intra block state.
+	stateSyncLogs := state.Logs()
 
 	// Fix log TxIndex - logs inherit TxIndex from state context during CommitStates.
 	txIndex := uint(len(txs) - 1)
@@ -1469,10 +1469,15 @@ func newStateSyncReceipt(tx types.Transaction, prev types.Receipts, state *state
 		l.TxIndex = txIndex
 	}
 
+	var cumulativeGasUsed uint64
+	if len(prev) > 0 {
+		cumulativeGasUsed = prev[len(prev)-1].CumulativeGasUsed
+	}
+
 	r := &types.Receipt{
 		Type:              tx.Type(),
 		Status:            types.ReceiptStatusSuccessful,
-		CumulativeGasUsed: header.GasUsed,
+		CumulativeGasUsed: cumulativeGasUsed,
 		Logs:              stateSyncLogs,
 		// Implementation fields
 		TxHash:  tx.Hash(),
@@ -1484,13 +1489,4 @@ func newStateSyncReceipt(tx types.Transaction, prev types.Receipts, state *state
 	r.Bloom = types.CreateBloom(types.Receipts{r})
 
 	return r
-}
-
-// countLogsFromReceipts counts the total number of logs in the given receipts.
-func countLogsFromReceipts(receipts types.Receipts) int {
-	count := 0
-	for _, r := range receipts {
-		count += len(r.Logs)
-	}
-	return count
 }

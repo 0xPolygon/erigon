@@ -45,7 +45,7 @@ type BorConfig struct {
 	AhmedabadBlock *big.Int `json:"ahmedabadBlock"` // Ahmedabad switch block (nil = no fork, 0 = already on Ahmedabad)
 	BhilaiBlock    *big.Int `json:"bhilaiBlock"`    // Bhilai switch block (nil = no fork, 0 = already on Ahmedabad)
 	RioBlock       *big.Int `json:"rioBlock"`       // Rio switch block (nil = no fork, 0 = already on Rio)
-	StateSyncBlock *big.Int `json:"stateSyncBlock"` // StateSync switch block (nil = no fork, 0 = already on StateSync) // TODO: Define better name
+	StateSyncBlock *big.Int `json:"stateSyncBlock"` // StateSync switch block (nil = no fork, 0 = already on StateSync)
 
 	StateSyncConfirmationDelay map[string]uint64         `json:"stateSyncConfirmationDelay"` // StateSync Confirmation Delay, in seconds, to calculate `to`
 	Coinbase                   map[string]common.Address `json:"coinbase"`                   // coinbase address

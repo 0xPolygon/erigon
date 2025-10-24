@@ -585,7 +585,7 @@ func (rs Receipts) EncodeRLP69(w io.Writer) error {
 		if i == n-1 {
 			// Match the ReadStateSyncReceiptByHash logic:
 			// It's a state-sync transaction if the cumulative gas is zero, or
-			// the equal cumulative gas is equal to the previous one (zero gas usage)
+			// the cumulative gas is equal to the previous one (zero gas usage)
 			if r.CumulativeGasUsed == 0 || (n >= 2 && r.CumulativeGasUsed == rs[n-2].CumulativeGasUsed) {
 				r.Type = 0
 			}

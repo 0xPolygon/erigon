@@ -495,7 +495,7 @@ func TestReadStateSyncReceiptByHash_EqualGasUsedStateSync(t *testing.T) {
 	br := m.BlockReader
 	txNumReader := br.TxnumReader(ctx)
 
-	// Creat two transactions: one "normal" and one state-sync
+	// Create two transactions: one "normal" and one state-sync
 	tx1 := types.NewTransaction(0, common.HexToAddress("0x10"), uint256.NewInt(0), 21000, uint256.NewInt(1), nil)
 	tx2 := types.NewTransaction(1, common.HexToAddress("0x11"), uint256.NewInt(0), 21000, uint256.NewInt(1), nil)
 	body := &types.Body{Transactions: types.Transactions{tx1, tx2}}

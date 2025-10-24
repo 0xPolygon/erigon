@@ -519,11 +519,16 @@ func NewRPCTransaction(txn types.Transaction, blockHash common.Hash, blockNumber
 		}
 		result.GasPrice = (*hexutil.Big)(txn.GetTipCap().ToBig())
 	} else {
-		chainId.Set(txn.GetChainID())
-		result.ChainID = (*hexutil.Big)(chainId.ToBig())
+		if txn.Type() != types.StateSyncTxType {
+			chainId.Set(txn.GetChainID())
+			result.ChainID = (*hexutil.Big)(chainId.ToBig())
+		}
 		result.YParity = (*hexutil.Big)(v.ToBig())
-		acl := txn.GetAccessList()
-		result.Accesses = &acl
+
+		if txn.Type() != types.StateSyncTxType {
+			acl := txn.GetAccessList()
+			result.Accesses = &acl
+		}
 
 		if txn.Type() == types.AccessListTxType {
 			result.GasPrice = (*hexutil.Big)(txn.GetTipCap().ToBig())

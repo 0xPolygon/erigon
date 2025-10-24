@@ -334,6 +334,16 @@ func (c *Config) IsBhilai(num uint64) bool {
 	return (c != nil) && (c.Bor != nil) && c.Bor.IsBhilai(num)
 }
 
+// IsRio returns whether num is either equal to the Rio fork block or greater.
+func (c *Config) IsRio(num uint64) bool {
+	return (c != nil) && (c.Bor != nil) && c.Bor.IsRio(num)
+}
+
+// IsStateSync returns whether num is either equal to the StateSync fork block or greater.
+func (c *Config) IsStateSync(num uint64) bool {
+	return (c != nil) && (c.Bor != nil) && c.Bor.IsStateSync(num)
+}
+
 // IsCancun returns whether time is either equal to the Cancun fork time or greater.
 func (c *Config) IsCancun(time uint64) bool {
 	return isForked(c.CancunTime, time)
@@ -703,10 +713,9 @@ type Rules struct {
 	IsHomestead, IsTangerineWhistle, IsSpuriousDragon bool
 	IsByzantium, IsConstantinople, IsPetersburg       bool
 	IsIstanbul, IsBerlin, IsLondon, IsShanghai        bool
-	IsCancun, IsNapoli, IsBhilai                      bool
+	IsCancun, IsNapoli, IsBhilai, IsRio, IsStateSync  bool
 	IsPrague, IsOsaka                                 bool
 	IsAura                                            bool
-	IsStateSync                                       bool // TODO define a name when we have a fork that enables it
 }
 
 // isForked returns whether a fork scheduled at block s is active at the given head block.

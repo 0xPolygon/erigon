@@ -798,7 +798,7 @@ func (c *Bor) CalculateRewards(_ *chain.Config, _ *types.Header, _ []*types.Head
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
 func (c *Bor) Finalize(_ *chain.Config, header *types.Header, state *state.IntraBlockState,
-	_ types.Transactions, _ []*types.Header, _ types.Receipts, withdrawals []*types.Withdrawal,
+	txs types.Transactions, _ []*types.Header, receipts types.Receipts, withdrawals []*types.Withdrawal,
 	chain consensus.ChainReader, syscall consensus.SystemCall, _ bool, _ log.Logger,
 ) (types.FlatRequests, error) {
 	headerNumber := header.Number.Uint64()
@@ -841,7 +841,14 @@ func (c *Bor) Finalize(_ *chain.Config, header *types.Header, state *state.Intra
 		return nil, err
 	}
 
-	// PIP-74: Finalize does not append txs/receipts (that’s done in FinalizeAndAssemble)
+	if c.config.IsStateSync(headerNumber) && len(txs) > 0 {
+		lastTx := txs[len(txs)-1]
+		if lastTx.Type() == types.StateSyncTxType && receipts[len(txs)-1] == nil {
+			prevReceipts := receipts[:len(txs)-1]
+			stateSyncReceipt := newStateSyncReceipt(lastTx, prevReceipts, state, header, txs)
+			receipts[len(txs)-1] = stateSyncReceipt
+		}
+	}
 
 	return nil, nil
 }
@@ -920,7 +927,7 @@ func (c *Bor) FinalizeAndAssemble(
 		return nil, nil, err
 	}
 
-	// PIP-74: append StateSyncTx and receipt post-fork if any events executed
+	// PIP-74: append StateSyncTx and receipt post-fork if any state-sync events executed.
 	if c.config.IsStateSync(headerNumber) && len(execStateSync) > 0 {
 		c.logger.Info("FinalizeAndAssemble: Appending state sync txs", "count", len(execStateSync))
 		stateSyncTx := &types.StateSyncTx{StateSyncData: execStateSync}
@@ -1451,30 +1458,35 @@ func VerifyUncles(uncles []*types.Header) error {
 
 // newStateSyncReceipt creates a new receipt for the StateSyncTx
 func newStateSyncReceipt(tx types.Transaction, prev types.Receipts, state *state.IntraBlockState, header *types.Header, txs types.Transactions) *types.Receipt {
-	// Slice logs since previous receipts
-	allLogs := state.Logs()
-	logsFromReceiptCount := countLogsFromReceipts(prev)
-	stateSyncLogs := allLogs[logsFromReceiptCount:]
+	// state.Logs() only contains the state sync logs.
+	// regular tx logs are already in their receipts, not in state.
+	// Here, state is the intra block state.
+	stateSyncLogs := state.Logs()
+
+	// Fix log TxIndex - logs inherit TxIndex from state context during CommitStates.
+	txIndex := uint(len(txs) - 1)
+	for _, l := range stateSyncLogs {
+		l.TxIndex = txIndex
+	}
+
+	var cumulativeGasUsed uint64
+	if len(prev) > 0 {
+		cumulativeGasUsed = prev[len(prev)-1].CumulativeGasUsed
+	}
 
 	r := &types.Receipt{
 		Type:              tx.Type(),
 		Status:            types.ReceiptStatusSuccessful,
-		CumulativeGasUsed: header.GasUsed,
-		GasUsed:           0,
-		TxHash:            tx.Hash(),
+		CumulativeGasUsed: cumulativeGasUsed,
 		Logs:              stateSyncLogs,
-		BlockNumber:       header.Number,
-		TransactionIndex:  uint(len(txs) - 1),
+		// Implementation fields
+		TxHash:  tx.Hash(),
+		GasUsed: 0,
+		// Inclusion information
+		BlockNumber:      header.Number,
+		TransactionIndex: txIndex,
 	}
 	r.Bloom = types.CreateBloom(types.Receipts{r})
-	return r
-}
 
-// countLogsFromReceipts counts the total number of logs in the given receipts.
-func countLogsFromReceipts(receipts types.Receipts) int {
-	count := 0
-	for _, r := range receipts {
-		count += len(r.Logs)
-	}
-	return count
+	return r
 }

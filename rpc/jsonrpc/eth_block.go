@@ -229,7 +229,7 @@ func (api *APIImpl) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber
 	}
 	var borTx types.Transaction
 	var borTxHash common.Hash
-	if chainConfig.Bor != nil && !chainConfig.Bor.IsStateSync(b.NumberU64()) {
+	if chainConfig.Bor != nil && !chainConfig.Bor.IsMadhugiri(b.NumberU64()) {
 		possibleBorTxnHash := bortypes.ComputeBorTxHash(b.NumberU64(), b.Hash())
 		_, ok, err := api.bridgeReader.EventTxnLookup(ctx, possibleBorTxnHash)
 		if err != nil {

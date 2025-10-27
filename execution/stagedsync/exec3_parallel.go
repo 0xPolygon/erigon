@@ -419,7 +419,7 @@ func (pe *parallelExecutor) processResultQueue(ctx context.Context, inputTxNum u
 			// PIP-74: ensure that logs from state-sync tx are applied
 			// this is needed as the state-sync txs are skipped during execution,
 			// but we still want to apply their logs to the state
-			if pe.cfg.chainConfig.Bor != nil && pe.cfg.chainConfig.Bor.IsStateSync(txTask.BlockNum) {
+			if pe.cfg.chainConfig.Bor != nil && pe.cfg.chainConfig.Bor.IsMadhugiri(txTask.BlockNum) {
 				if len(txTask.BlockReceipts) > 0 {
 					last := txTask.BlockReceipts[len(txTask.BlockReceipts)-1]
 					if last != nil && last.Type == types.StateSyncTxType {

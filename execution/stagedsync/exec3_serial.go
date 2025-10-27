@@ -70,10 +70,10 @@ func (se *serialExecutor) execute(ctx context.Context, tasks []*state.TxTask, gp
 					// all tasks - if that changes this will need to change - probably need to
 					// add this to the executor
 					receiptsToPush := txTask.BlockReceipts
-					// polygon state-sync behavior
-					if se.cfg.chainConfig.Bor != nil && se.cfg.chainConfig.Bor.IsStateSync(txTask.BlockNum) {
+					// Madhugiri HF behavior
+					if se.cfg.chainConfig.Bor != nil && se.cfg.chainConfig.Bor.IsMadhugiri(txTask.BlockNum) {
 						// Nothing to do here
-						// Post StateSyncBlock (PIP-74), `FinalizeAndAssemble` already appends the state-sync receipt.
+						// Post Madhugiri HF (PIP-74), `FinalizeAndAssemble` already appends the state-sync receipt.
 						// It included in `receiptsToPush`, so we don't add it twice.
 						// Keeping the comment to make the state-sync handling explicit.
 					}

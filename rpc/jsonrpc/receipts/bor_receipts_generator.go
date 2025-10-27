@@ -89,7 +89,7 @@ func (g *BorGenerator) GenerateBorReceipt(ctx context.Context, tx kv.TemporalTx,
 		txHash = bortypes.ComputeBorTxHash(block.NumberU64(), block.Hash())
 	}
 
-	receipt, err := applyBorTransaction(msgs, evm, gp, ibs, block.Number(), block.Hash(), txHash, uint(txIndex), cumGasUsedInLastBlock, uint(logIdxAfterTx), rawtemporaldb.ReceiptStoresFirstLogIdx(tx))
+	receipt, err := applyBorTransaction(chainConfig, msgs, evm, gp, ibs, block.Number(), block.Hash(), txHash, uint(txIndex), cumGasUsedInLastBlock, uint(logIdxAfterTx), rawtemporaldb.ReceiptStoresFirstLogIdx(tx))
 	if err != nil {
 		return nil, err
 	}
@@ -149,14 +149,22 @@ func getBorLogs(msgs []*types.Message, evm *vm.EVM, gp *core.GasPool, ibs *state
 	return receiptLogs, nil
 }
 
-func applyBorTransaction(msgs []*types.Message, evm *vm.EVM, gp *core.GasPool, ibs *state.IntraBlockState, blockNumber *big.Int, blockHash common.Hash, txHash common.Hash, txIndex uint, cumulativeGasUsed uint64, logIdxAfterTx uint, receiptWithFirstLogIdx bool) (*types.Receipt, error) {
+func applyBorTransaction(chainConfig *chain.Config, msgs []*types.Message, evm *vm.EVM, gp *core.GasPool, ibs *state.IntraBlockState, blockNumber *big.Int, blockHash common.Hash, txHash common.Hash, txIndex uint, cumulativeGasUsed uint64, logIdxAfterTx uint, receiptWithFirstLogIdx bool) (*types.Receipt, error) {
 	receiptLogs, err := getBorLogs(msgs, evm, gp, ibs, blockNumber.Uint64(), blockHash, txHash, txIndex, logIdxAfterTx, receiptWithFirstLogIdx)
 	if err != nil {
 		return nil, err
 	}
 
+	var receiptType uint8
+	if chainConfig.Bor.IsMadhugiri(blockNumber.Uint64()) {
+		receiptType = types.StateSyncTxType
+	} else {
+		receiptType = types.LegacyTxType
+	}
+
+	// Default to legacy type for pre-Madhugiri hardfork behavior; callers may override for post-Madhugiri hardfork.
 	receipt := types.Receipt{
-		Type:              0,
+		Type:              receiptType,
 		CumulativeGasUsed: cumulativeGasUsed,
 		TxHash:            txHash,
 		GasUsed:           0,

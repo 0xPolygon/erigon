@@ -1310,7 +1310,8 @@ func (c *Bor) CommitStates(
 
 		var ev types.StateSyncData
 		if err := rlp.DecodeBytes(event.Data(), &ev); err != nil {
-			continue // not a state-sync event, skip
+			log.Error("error while decoding state sync data", "err", err)
+			continue // Not a state-sync event, skip
 		}
 
 		execStateSync = append(execStateSync, &types.StateSyncData{

@@ -286,6 +286,12 @@ func (api *BaseAPI) getLogsV3(ctx context.Context, tx kv.TemporalTx, begin, end 
 						return nil, err
 					}
 				}
+
+				block, err := api._blockReader.BlockByHash(ctx, tx, header.Hash())
+				if err != nil {
+					return nil, err
+				}
+
 				// check for state sync event logs
 				events, err := api.bridgeReader.Events(ctx, header.Hash(), blockNum)
 				if err != nil {
@@ -296,7 +302,16 @@ func (api *BaseAPI) getLogsV3(ctx context.Context, tx kv.TemporalTx, begin, end 
 					continue
 				}
 
-				borLogs, err := api.borReceiptGenerator.GenerateBorLogs(ctx, events, api._txNumReader, tx, header, chainConfig, txIndex, txNum)
+				// Post HF, calculate the hash directly from txn instead of deriving it from block number and hash.
+				var txHash common.Hash
+				if chainConfig.Bor.IsMadhugiri(block.NumberU64()) {
+					borTx := block.Transactions()[len(block.Transactions())-1]
+					txHash = borTx.Hash()
+				} else {
+					txHash = bortypes.ComputeBorTxHash(block.NumberU64(), block.Hash())
+				}
+
+				borLogs, err := api.borReceiptGenerator.GenerateBorLogs(ctx, events, api._txNumReader, tx, header, chainConfig, txHash, txIndex, txNum)
 				if err != nil {
 					return logs, err
 				}
@@ -456,7 +471,7 @@ func (api *APIImpl) GetTransactionReceipt(ctx context.Context, txnHash common.Ha
 		return nil, err
 	}
 
-	if isBorStateSyncTx {
+	generateBorReceipt := func(txn types.Transaction) (map[string]interface{}, error) {
 		block, err := api.blockByNumberWithSenders(ctx, tx, blockNum)
 		if err != nil {
 			return nil, err
@@ -479,7 +494,12 @@ func (api *APIImpl) GetTransactionReceipt(ctx context.Context, txnHash common.Ha
 			return nil, err
 		}
 
-		return ethutils.MarshalReceipt(borReceipt, bortypes.NewBorTransaction(), chainConfig, block.HeaderNoCopy(), txnHash, false, false), nil
+		return ethutils.MarshalReceipt(borReceipt, txn, chainConfig, block.HeaderNoCopy(), txnHash, false, true), nil
+	}
+
+	// This case covers state-sync txs before HF as they're not available in the txn lookup
+	if isBorStateSyncTx {
+		return generateBorReceipt(bortypes.NewBorTransaction())
 	}
 
 	var txnIndex = int(txNum - txNumMin - 1)
@@ -487,6 +507,12 @@ func (api *APIImpl) GetTransactionReceipt(ctx context.Context, txnHash common.Ha
 	txn, err := api._blockReader.TxnByIdxInBlock(ctx, tx, header.Number.Uint64(), txnIndex)
 	if err != nil {
 		return nil, err
+	}
+
+	// This case covers state-sync txs post HF as they're available in the txn lookup so we can
+	// use the actual state-sync tx type to generate receipt.
+	if txn.Type() == types.StateSyncTxType {
+		return generateBorReceipt(txn)
 	}
 
 	receipt, err := api.getReceipt(ctx, chainConfig, tx, header, txn, txnIndex, txNum)
@@ -533,20 +559,30 @@ func (api *APIImpl) GetBlockReceipts(ctx context.Context, numberOrHash rpc.Block
 		result = append(result, ethutils.MarshalReceipt(receipt, txn, chainConfig, block.HeaderNoCopy(), txn.Hash(), true, true))
 	}
 
-	if chainConfig.Bor != nil {
-		events, err := api.bridgeReader.Events(ctx, block.Hash(), blockNum)
+	if chainConfig.Bor == nil {
+		return result, nil
+	}
+
+	var borTx types.Transaction = bortypes.NewBorTransaction()
+	if chainConfig.Bor.IsMadhugiri(blockNum) && len(receipts)+1 == len(block.Transactions()) {
+		borTx = block.Transactions()[len(block.Transactions())-1]
+		if borTx.Type() != types.StateSyncTxType {
+			return result, nil
+		}
+	}
+
+	events, err := api.bridgeReader.Events(ctx, block.Hash(), blockNum)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(events) != 0 {
+		borReceipt, err := api.borReceiptGenerator.GenerateBorReceipt(ctx, tx, block, events, chainConfig)
 		if err != nil {
 			return nil, err
 		}
 
-		if len(events) != 0 {
-			borReceipt, err := api.borReceiptGenerator.GenerateBorReceipt(ctx, tx, block, events, chainConfig)
-			if err != nil {
-				return nil, err
-			}
-
-			result = append(result, ethutils.MarshalReceipt(borReceipt, bortypes.NewBorTransaction(), chainConfig, block.HeaderNoCopy(), borReceipt.TxHash, false, true))
-		}
+		result = append(result, ethutils.MarshalReceipt(borReceipt, borTx, chainConfig, block.HeaderNoCopy(), borReceipt.TxHash, false, true))
 	}
 
 	return result, nil

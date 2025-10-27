@@ -48,6 +48,6 @@ func (bc *BlockContext) Rules(c *chain.Config) *chain.Rules {
 		IsOsaka:            c.IsOsaka(bc.Time),
 		IsAura:             c.Aura != nil,
 		IsRio:              c.IsRio(bc.BlockNumber),
-		IsStateSync:        c.IsStateSync(bc.BlockNumber),
+		IsMadhugiri:        c.IsMadhugiri(bc.BlockNumber),
 	}
 }

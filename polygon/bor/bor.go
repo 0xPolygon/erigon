@@ -841,7 +841,7 @@ func (c *Bor) Finalize(_ *chain.Config, header *types.Header, state *state.Intra
 		return nil, err
 	}
 
-	if c.config.IsStateSync(headerNumber) && len(txs) > 0 {
+	if c.config.IsMadhugiri(headerNumber) && len(txs) > 0 {
 		lastTx := txs[len(txs)-1]
 		if lastTx.Type() == types.StateSyncTxType && receipts[len(txs)-1] == nil {
 			prevReceipts := receipts[:len(txs)-1]
@@ -928,7 +928,7 @@ func (c *Bor) FinalizeAndAssemble(
 	}
 
 	// PIP-74: append StateSyncTx and receipt post-fork if any state-sync events executed.
-	if c.config.IsStateSync(headerNumber) && len(execStateSync) > 0 {
+	if c.config.IsMadhugiri(headerNumber) && len(execStateSync) > 0 {
 		c.logger.Info("FinalizeAndAssemble: Appending state sync txs", "count", len(execStateSync))
 		stateSyncTx := &types.StateSyncTx{StateSyncData: execStateSync}
 		txs = append(txs, stateSyncTx)

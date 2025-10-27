@@ -64,9 +64,8 @@ func (tx *StateSyncTx) GetTo() *common.Address {
 }
 
 func (tx *StateSyncTx) AsMessage(_ Signer, baseFee *big.Int, rules *chain.Rules) (*Message, error) {
-	if !rules.IsStateSync {
-		// TODO: Change to a better name when we have a hard fork for this.
-		return nil, errors.New("StateSync typed tx requires StateSync hard fork")
+	if !rules.IsMadhugiri {
+		return nil, errors.New("StateSync typed tx requires Madhugiri hard fork")
 	}
 
 	msg := Message{

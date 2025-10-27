@@ -302,9 +302,9 @@ func (api *BaseAPI) getLogsV3(ctx context.Context, tx kv.TemporalTx, begin, end 
 					continue
 				}
 
-				// Post HF, calculate the hash directly from txn instead of deriving it from block number and hash
+				// Post HF, calculate the hash directly from txn instead of deriving it from block number and hash.
 				var txHash common.Hash
-				if chainConfig.Bor.IsStateSync(block.NumberU64()) {
+				if chainConfig.Bor.IsMadhugiri(block.NumberU64()) {
 					borTx := block.Transactions()[len(block.Transactions())-1]
 					txHash = borTx.Hash()
 				} else {
@@ -564,7 +564,7 @@ func (api *APIImpl) GetBlockReceipts(ctx context.Context, numberOrHash rpc.Block
 	}
 
 	var borTx types.Transaction = bortypes.NewBorTransaction()
-	if chainConfig.Bor.IsStateSync(blockNum) && len(receipts)+1 == len(block.Transactions()) {
+	if chainConfig.Bor.IsMadhugiri(blockNum) && len(receipts)+1 == len(block.Transactions()) {
 		borTx = block.Transactions()[len(block.Transactions())-1]
 		if borTx.Type() != types.StateSyncTxType {
 			return result, nil

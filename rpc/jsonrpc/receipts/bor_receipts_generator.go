@@ -49,9 +49,9 @@ func (g *BorGenerator) GenerateBorReceipt(ctx context.Context, tx kv.TemporalTx,
 		return receipt, nil
 	}
 
-	// Post state-sync HF, state-sync txn is part of block body so calculate index accordingly
+	// Post Madhugiri HF, state-sync txn is part of block body so calculate index accordingly.
 	txIndex := len(block.Transactions())
-	if chainConfig.Bor.IsStateSync(block.NumberU64()) {
+	if chainConfig.Bor.IsMadhugiri(block.NumberU64()) {
 		txIndex = len(block.Transactions()) - 1
 	}
 
@@ -74,9 +74,9 @@ func (g *BorGenerator) GenerateBorReceipt(ctx context.Context, tx kv.TemporalTx,
 	gp := new(core.GasPool).AddGas(msgs[0].Gas() * uint64(len(msgs))).AddBlobGas(msgs[0].BlobGas() * uint64(len(msgs)))
 	evm := vm.NewEVM(blockContext, evmtypes.TxContext{}, ibs, chainConfig, vm.Config{})
 
-	// Post HF, calculate the hash directly from txn instead of deriving it from block number and hash
+	// Post Madhugiri HF, calculate the hash directly from txn instead of deriving it from block number and hash.
 	var txHash common.Hash
-	if chainConfig.Bor.IsStateSync(block.NumberU64()) {
+	if chainConfig.Bor.IsMadhugiri(block.NumberU64()) {
 		borTx := block.Transactions()[len(block.Transactions())-1]
 		txHash = borTx.Hash()
 	} else {

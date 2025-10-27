@@ -25,10 +25,10 @@ import (
 	"github.com/erigontech/erigon/execution/chain"
 )
 
-// BorConfig is the consensus engine configs for Matic bor based sealing.
+// BorConfig is the consensus engine configs for bor-based sealing.
 type BorConfig struct {
 	Period                map[string]uint64 `json:"period"`                // Number of seconds between blocks to enforce
-	ProducerDelay         map[string]uint64 `json:"producerDelay"`         // Number of seconds delay between two producer interval
+	ProducerDelay         map[string]uint64 `json:"producerDelay"`         // Number of seconds between two producers' intervals
 	Sprint                map[string]uint64 `json:"sprint"`                // Epoch length to proposer
 	BackupMultiplier      map[string]uint64 `json:"backupMultiplier"`      // Backup multiplier to determine the wiggle time
 	ValidatorContract     string            `json:"validatorContract"`     // Validator set contract
@@ -37,14 +37,16 @@ type BorConfig struct {
 	OverrideStateSyncRecords map[string]int         `json:"overrideStateSyncRecords"` // override state records count
 	BlockAlloc               map[string]interface{} `json:"blockAlloc"`
 
-	JaipurBlock                *big.Int                  `json:"jaipurBlock"`                // Jaipur switch block (nil = no fork, 0 = already on Jaipur)
-	DelhiBlock                 *big.Int                  `json:"delhiBlock"`                 // Delhi switch block (nil = no fork, 0 = already on Delhi)
-	IndoreBlock                *big.Int                  `json:"indoreBlock"`                // Indore switch block (nil = no fork, 0 = already on Indore)
-	AgraBlock                  *big.Int                  `json:"agraBlock"`                  // Agra switch block (nil = no fork, 0 = already on Agra)
-	NapoliBlock                *big.Int                  `json:"napoliBlock"`                // Napoli switch block (nil = no fork, 0 = already on Napoli)
-	AhmedabadBlock             *big.Int                  `json:"ahmedabadBlock"`             // Ahmedabad switch block (nil = no fork, 0 = already on Ahmedabad)
-	BhilaiBlock                *big.Int                  `json:"bhilaiBlock"`                // Bhilai switch block (nil = no fork, 0 = already on Ahmedabad)
-	RioBlock                   *big.Int                  `json:"rioBlock"`                   // Rio switch block (nil = no fork, 0 = already on Rio)
+	JaipurBlock    *big.Int `json:"jaipurBlock"`    // Jaipur switch block (nil = no fork, 0 = already on Jaipur)
+	DelhiBlock     *big.Int `json:"delhiBlock"`     // Delhi switch block (nil = no fork, 0 = already on Delhi)
+	IndoreBlock    *big.Int `json:"indoreBlock"`    // Indore switch block (nil = no fork, 0 = already on Indore)
+	AgraBlock      *big.Int `json:"agraBlock"`      // Agra switch block (nil = no fork, 0 = already on Agra)
+	NapoliBlock    *big.Int `json:"napoliBlock"`    // Napoli switch block (nil = no fork, 0 = already on Napoli)
+	AhmedabadBlock *big.Int `json:"ahmedabadBlock"` // Ahmedabad switch block (nil = no fork, 0 = already on Ahmedabad)
+	BhilaiBlock    *big.Int `json:"bhilaiBlock"`    // Bhilai switch block (nil = no fork, 0 = already on Ahmedabad)
+	RioBlock       *big.Int `json:"rioBlock"`       // Rio switch block (nil = no fork, 0 = already on Rio)
+	MadhugiriBlock *big.Int `json:"madhugiriBlock"` // Madhugiri switch block (nil = no fork, 0 = already on Madhugiri)
+
 	StateSyncConfirmationDelay map[string]uint64         `json:"stateSyncConfirmationDelay"` // StateSync Confirmation Delay, in seconds, to calculate `to`
 	Coinbase                   map[string]common.Address `json:"coinbase"`                   // coinbase address
 	sprints                    sprints
@@ -141,9 +143,9 @@ func (c *BorConfig) IsIndore(number uint64) bool {
 	return isForked(c.IndoreBlock, number)
 }
 
-// IsAgra returns whether num is either equal to the Agra fork block or greater.
+// IsAgra returns whether the num is either equal to the Agra fork block or greater.
 // The Agra hard fork is based on the Shanghai hard fork, but it doesn't include withdrawals.
-// Also Agra is activated based on the block number rather than the timestamp.
+// Also, Agra is activated based on the block number rather than the timestamp.
 // Refer to https://forum.polygon.technology/t/pip-28-agra-hardfork
 func (c *BorConfig) IsAgra(num uint64) bool {
 	return isForked(c.AgraBlock, num)
@@ -184,6 +186,14 @@ func (c *BorConfig) IsRio(number uint64) bool {
 
 func (c *BorConfig) GetRioBlock() *big.Int {
 	return c.RioBlock
+}
+
+func (c *BorConfig) IsMadhugiri(number uint64) bool {
+	return isForked(c.MadhugiriBlock, number)
+}
+
+func (c *BorConfig) GetMadhugiriBlock() *big.Int {
+	return c.MadhugiriBlock
 }
 
 func (c *BorConfig) CalculateStateSyncDelay(number uint64) uint64 {

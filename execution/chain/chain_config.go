@@ -181,6 +181,8 @@ type BorConfig interface {
 	GetBhilaiBlock() *big.Int
 	IsRio(num uint64) bool
 	GetRioBlock() *big.Int
+	IsMadhugiri(num uint64) bool
+	GetMadhugiriBlock() *big.Int
 	StateReceiverContractAddress() common.Address
 	CalculateSprintNumber(number uint64) uint64
 	CalculateSprintLength(number uint64) uint64
@@ -199,13 +201,14 @@ func (c *Config) String() string {
 	engine := c.getEngine()
 
 	if c.Bor != nil {
-		return fmt.Sprintf("{ChainID: %v, Agra: %v, Napoli: %v, Ahmedabad: %v, Bhilai: %v, Rio: %v, Engine: %v}",
+		return fmt.Sprintf("{ChainID: %v, Agra: %v, Napoli: %v, Ahmedabad: %v, Bhilai: %v, Rio: %v, Madhugiri: %v, Engine: %v}",
 			c.ChainID,
 			c.Bor.GetAgraBlock(),
 			c.Bor.GetNapoliBlock(),
 			c.Bor.GetAhmedabadBlock(),
 			c.Bor.GetBhilaiBlock(),
 			c.Bor.GetRioBlock(),
+			c.Bor.GetMadhugiriBlock(),
 			engine,
 		)
 	}
@@ -329,6 +332,16 @@ func (c *Config) IsNapoli(num uint64) bool {
 // Refer to https://forum.polygon.technology/t/pip-63-bhilai-hardfork
 func (c *Config) IsBhilai(num uint64) bool {
 	return (c != nil) && (c.Bor != nil) && c.Bor.IsBhilai(num)
+}
+
+// IsRio returns whether num is either equal to the Rio fork block or greater.
+func (c *Config) IsRio(num uint64) bool {
+	return (c != nil) && (c.Bor != nil) && c.Bor.IsRio(num)
+}
+
+// IsMadhugiri returns whether num is either equal to the Madhugiri fork block or greater.
+func (c *Config) IsMadhugiri(num uint64) bool {
+	return (c != nil) && (c.Bor != nil) && c.Bor.IsMadhugiri(num)
 }
 
 // IsCancun returns whether time is either equal to the Cancun fork time or greater.
@@ -700,7 +713,7 @@ type Rules struct {
 	IsHomestead, IsTangerineWhistle, IsSpuriousDragon bool
 	IsByzantium, IsConstantinople, IsPetersburg       bool
 	IsIstanbul, IsBerlin, IsLondon, IsShanghai        bool
-	IsCancun, IsNapoli, IsBhilai                      bool
+	IsCancun, IsNapoli, IsBhilai, IsRio, IsMadhugiri  bool
 	IsPrague, IsOsaka                                 bool
 	IsAura                                            bool
 }

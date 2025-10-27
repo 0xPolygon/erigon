@@ -214,7 +214,7 @@ func (r *Receipt) decodeTyped(b []byte) error {
 		return errShortTypedReceipt
 	}
 	switch b[0] {
-	case DynamicFeeTxType, AccessListTxType, BlobTxType:
+	case DynamicFeeTxType, AccessListTxType, BlobTxType, SetCodeTxType, StateSyncTxType:
 		var data receiptRLP
 		err := rlp.DecodeBytes(b[1:], &data)
 		if err != nil {
@@ -319,7 +319,7 @@ func (r *Receipt) DecodeRLP(s *rlp.Stream) error {
 		}
 		r.Type = b[0]
 		switch r.Type {
-		case AccessListTxType, DynamicFeeTxType, BlobTxType, SetCodeTxType:
+		case AccessListTxType, DynamicFeeTxType, BlobTxType, SetCodeTxType, StateSyncTxType:
 			if err := r.decodePayload(s); err != nil {
 				return err
 			}
@@ -486,6 +486,11 @@ func (rs Receipts) EncodeIndex(i int, w *bytes.Buffer) {
 		if err := rlp.Encode(w, data); err != nil {
 			panic(err)
 		}
+	case StateSyncTxType:
+		w.WriteByte(StateSyncTxType)
+		if err := rlp.Encode(w, data); err != nil {
+			panic(err)
+		}
 	default:
 		// For unsupported types, write nothing. Since this is for
 		// DeriveSha, the error will be caught matching the derived hash
@@ -583,11 +588,16 @@ func (rs Receipts) EncodeRLP69(w io.Writer) error {
 
 		// Only the last receipt can be a state-sync tx.
 		if i == n-1 {
-			// Match the ReadStateSyncReceiptByHash logic:
-			// It's a state-sync transaction if the cumulative gas is zero, or
-			// the cumulative gas is equal to the previous one (zero gas usage)
-			if r.CumulativeGasUsed == 0 || (n >= 2 && r.CumulativeGasUsed == rs[n-2].CumulativeGasUsed) {
-				r.Type = 0
+			// Post-Madhugiri, the state-sync transaction is a typed tx (StateSyncTxType)
+			// and must keep its type for eth/69 encoding. Only apply the pre-HF heuristic
+			// when the receipt is not already the typed state-sync receipt.
+			if r.Type != StateSyncTxType {
+				// Match the ReadStateSyncReceiptByHash logic for pre-HF:
+				// It's a state-sync transaction if the cumulative gas is zero, or
+				// the cumulative gas is equal to the previous one (zero gas usage)
+				if r.CumulativeGasUsed == 0 || (n >= 2 && r.CumulativeGasUsed == rs[n-2].CumulativeGasUsed) {
+					r.Type = LegacyTxType
+				}
 			}
 		}
 

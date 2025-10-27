@@ -43,11 +43,12 @@ import (
 
 const (
 	LegacyTxnType     byte = 0
-	AccessListTxnType byte = 1 // EIP-2930
-	DynamicFeeTxnType byte = 2 // EIP-1559
-	BlobTxnType       byte = 3 // EIP-4844
-	SetCodeTxnType    byte = 4 // EIP-7702
-	AATxnType         byte = 5 // RIP-7560
+	AccessListTxnType byte = 1   // EIP-2930
+	DynamicFeeTxnType byte = 2   // EIP-1559
+	BlobTxnType       byte = 3   // EIP-4844
+	SetCodeTxnType    byte = 4   // EIP-7702
+	AATxnType         byte = 5   // RIP-7560
+	StateSyncTxType   byte = 127 // PIP-74
 )
 
 var ErrParseTxn = fmt.Errorf("%w transaction", rlp.ErrParse)
@@ -158,7 +159,7 @@ func (ctx *TxnParseContext) ParseTransaction(payload []byte, pos int, slot *TxnS
 	// If it is non-legacy transaction, the transaction type follows, and then the list
 	if !legacy {
 		slot.Type = payload[p]
-		if slot.Type > AATxnType {
+		if slot.Type > AATxnType && slot.Type != StateSyncTxType {
 			return 0, fmt.Errorf("%w: unknown transaction type: %d", ErrParseTxn, slot.Type)
 		}
 		p++

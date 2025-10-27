@@ -204,7 +204,16 @@ func (api *APIImpl) GetTransactionByBlockHashAndIndex(ctx context.Context, block
 		return nil, nil // not error, see https://github.com/erigontech/erigon/issues/1645
 	}
 
+	// Bor transactions are part of block body post Madhugiri HF
 	txs := block.Transactions()
+	if chainConfig.Bor != nil && chainConfig.Bor.IsMadhugiri(block.NumberU64()) {
+		if uint64(txIndex) >= uint64(len(txs)) {
+			return nil, nil // not error
+		}
+		return ethapi.NewRPCTransaction(txs[txIndex], block.Hash(), block.NumberU64(), uint64(txIndex), block.BaseFee()), nil
+	}
+
+	// Handle pre-HF blocks
 	if uint64(txIndex) > uint64(len(txs)) {
 		return nil, nil // not error
 	} else if uint64(txIndex) == uint64(len(txs)) {
@@ -276,7 +285,16 @@ func (api *APIImpl) GetTransactionByBlockNumberAndIndex(ctx context.Context, blo
 		return nil, nil // not error, see https://github.com/erigontech/erigon/issues/1645
 	}
 
+	// Bor transactions are part of block body post Madhugiri HF
 	txs := block.Transactions()
+	if chainConfig.Bor != nil && chainConfig.Bor.IsMadhugiri(block.NumberU64()) {
+		if uint64(txIndex) >= uint64(len(txs)) {
+			return nil, nil // not error
+		}
+		return ethapi.NewRPCTransaction(txs[txIndex], block.Hash(), block.NumberU64(), uint64(txIndex), block.BaseFee()), nil
+	}
+
+	// Handle pre-HF blocks
 	if uint64(txIndex) > uint64(len(txs)) {
 		return nil, nil // not error
 	} else if uint64(txIndex) == uint64(len(txs)) {

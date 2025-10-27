@@ -153,6 +153,11 @@ func (g *Generator) addToCacheReceipt(hash common.Hash, receipt *types.Receipt) 
 }
 
 func (g *Generator) GetReceipt(ctx context.Context, cfg *chain.Config, tx kv.TemporalTx, header *types.Header, txn types.Transaction, index int, txNum uint64) (*types.Receipt, error) {
+	// Use bor receipt generator for state-sync txns, exit early
+	if txn.Type() == types.StateSyncTxType {
+		return nil, fmt.Errorf("ReceiptGen.GetReceipt: txn is a state-sync transaction")
+	}
+
 	blockHash := header.Hash()
 	blockNum := header.Number.Uint64()
 	txnHash := txn.Hash()
@@ -286,7 +291,13 @@ func (g *Generator) GetReceipts(ctx context.Context, cfg *chain.Config, tx kv.Te
 	blockHash := block.Hash()
 
 	var receiptsFromDB types.Receipts
-	receipts := make(types.Receipts, len(block.Transactions()))
+	var txCount = len(block.Transactions())
+	if txCount > 0 {
+		if block.Transactions()[txCount-1].Type() == types.StateSyncTxType {
+			txCount-- // exclude state-sync tx
+		}
+	}
+	receipts := make(types.Receipts, txCount)
 	defer func() {
 		if dbg.Enabled(ctx) {
 			log.Info("[dbg] ReceiptGenerator.GetReceipts",
@@ -334,6 +345,11 @@ func (g *Generator) GetReceipts(ctx context.Context, cfg *chain.Config, tx kv.Te
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		default:
+		}
+
+		// skip state-sync transaction
+		if txn.Type() == types.StateSyncTxType {
+			continue
 		}
 
 		evm := core.CreateEVM(cfg, core.GetHashFn(genEnv.header, genEnv.getHeader), g.engine, nil, genEnv.ibs, genEnv.header, vmCfg)

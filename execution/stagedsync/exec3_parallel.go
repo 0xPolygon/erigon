@@ -416,6 +416,25 @@ func (pe *parallelExecutor) processResultQueue(ctx context.Context, inputTxNum u
 		}
 
 		if txTask.Final {
+			// PIP-74: ensure that logs from state-sync tx are applied
+			// this is needed as the state-sync txs are skipped during execution,
+			// but we still want to apply their logs to the state
+			if pe.cfg.chainConfig.Bor != nil && pe.cfg.chainConfig.Bor.IsMadhugiri(txTask.BlockNum) {
+				if len(txTask.BlockReceipts) > 0 {
+					last := txTask.BlockReceipts[len(txTask.BlockReceipts)-1]
+					if last != nil && last.Type == types.StateSyncTxType {
+						// Ensure logs from the state-sync receipt are applied
+						if err := pe.rs.ApplyLogsAndTraces(&state.TxTask{
+							BlockNum:      txTask.BlockNum,
+							BlockReceipts: []*types.Receipt{last},
+							Logs:          last.Logs,
+						}, pe.rs.Domains()); err != nil {
+							return outputTxNum, conflicts, triggers, processedBlockNum, false,
+								fmt.Errorf("ParallelExecutionState.Apply state-sync logs addition error: %w", err)
+						}
+					}
+				}
+			}
 			pe.rs.SetTxNum(txTask.TxNum, txTask.BlockNum)
 			err := pe.rs.ApplyState(ctx, txTask)
 			if err != nil {
@@ -534,6 +553,10 @@ func (pe *parallelExecutor) wait() error {
 
 func (pe *parallelExecutor) execute(ctx context.Context, tasks []*state.TxTask, gp *core.GasPool) (bool, error) {
 	for _, txTask := range tasks {
+		// skip state sync txs
+		if txTask.Tx != nil && txTask.Tx.Type() == types.StateSyncTxType {
+			continue
+		}
 		if txTask.Sender() != nil {
 			if ok := pe.rs.RegisterSender(txTask); ok {
 				pe.rs.AddWork(ctx, txTask, pe.in)

@@ -229,7 +229,9 @@ func (api *APIImpl) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber
 	}
 	var borTx types.Transaction
 	var borTxHash common.Hash
-	if chainConfig.Bor != nil {
+	// Bor transactions are included in block body post Madhugiri HF. Only fetch them
+	// for pre hard fork blocks.
+	if chainConfig.Bor != nil && !chainConfig.Bor.IsMadhugiri(b.NumberU64()) {
 		possibleBorTxnHash := bortypes.ComputeBorTxHash(b.NumberU64(), b.Hash())
 		_, ok, err := api.bridgeReader.EventTxnLookup(ctx, possibleBorTxnHash)
 		if err != nil {
@@ -288,7 +290,9 @@ func (api *APIImpl) GetBlockByHash(ctx context.Context, numberOrHash rpc.BlockNu
 	}
 	var borTx types.Transaction
 	var borTxHash common.Hash
-	if chainConfig.Bor != nil {
+	// Bor transactions are included in block body post Madhugiri HF. Only fetch them
+	// for pre hard fork blocks.
+	if chainConfig.Bor != nil && !chainConfig.Bor.IsMadhugiri(number) {
 		possibleBorTxnHash := bortypes.ComputeBorTxHash(block.NumberU64(), block.Hash())
 		_, ok, err := api.bridgeReader.EventTxnLookup(ctx, possibleBorTxnHash)
 		if err != nil {
@@ -357,7 +361,9 @@ func (api *APIImpl) GetBlockTransactionCountByNumber(ctx context.Context, blockN
 		return nil, err
 	}
 
-	if chainConfig.Bor != nil {
+	// Bor transactions are included in block body post Madhugiri HF. Only fetch them
+	// for pre hard fork blocks.
+	if chainConfig.Bor != nil && !chainConfig.Bor.IsMadhugiri(blockNum) {
 		borStateSyncTxHash := bortypes.ComputeBorTxHash(blockNum, blockHash)
 
 		_, ok, err := api.bridgeReader.EventTxnLookup(ctx, borStateSyncTxHash)
@@ -399,7 +405,9 @@ func (api *APIImpl) GetBlockTransactionCountByHash(ctx context.Context, blockHas
 		return nil, err
 	}
 
-	if chainConfig.Bor != nil {
+	// Bor transactions are included in block body post Madhugiri HF. Only fetch them
+	// for pre hard fork blocks.
+	if chainConfig.Bor != nil && !chainConfig.Bor.IsMadhugiri(blockNum) {
 		borStateSyncTxHash := bortypes.ComputeBorTxHash(blockNum, blockHash)
 
 		_, ok, err := api.bridgeReader.EventTxnLookup(ctx, borStateSyncTxHash)

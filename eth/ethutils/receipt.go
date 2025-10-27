@@ -96,6 +96,9 @@ func MarshalReceipt(
 		gasPrice := new(big.Int).Add(header.BaseFee, txn.GetEffectiveGasTip(baseFee).ToBig())
 		fields["effectiveGasPrice"] = (*hexutil.Big)(gasPrice)
 	}
+	if chainConfig.Bor != nil && txn.Type() == types.StateSyncTxType {
+		fields["effectiveGasPrice"] = (*hexutil.Big)(big.NewInt(0))
+	}
 
 	// Assign receipt status.
 	fields["status"] = hexutil.Uint64(receipt.Status)

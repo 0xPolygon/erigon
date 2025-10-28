@@ -72,7 +72,9 @@ func (g *BorGenerator) GenerateBorReceipt(ctx context.Context, tx kv.TemporalTx,
 		return nil, err
 	}
 
-	cumGasUsedInLastBlock, _, logIdxAfterTx, err := rawtemporaldb.ReceiptAsOf(tx, txNum+1)
+	// Get cumulative gas used and log index from the second last tx (last one being state-sync tx)
+	// and pass it directly to applyBorTransaction to avoid adjusting it later.
+	cumGasUsedInLastBlock, _, logIdxAfterTx, err := rawtemporaldb.ReceiptAsOf(tx, txNum)
 	if err != nil {
 		return nil, err
 	}
@@ -128,23 +130,28 @@ func getBorLogs(msgs []*types.Message, evm *vm.EVM, gp *core.GasPool, ibs *state
 
 	receiptLogs := ibs.GetLogs(0, txHash, blockNum, blockHash)
 
+	// Earlier, in some cases, `logIdxAfterTx` used to denote the index after last log of bor
+	// receipt and we had to adjust it here. Instead the value now denotes the log index to be
+	// used for first log of bor receipt.
 	// set fields
-	var logIndex uint
-	if receiptWithFirstLogIdx {
-		logIndex = logIdxAfterTx
-	} else {
-		// this check is a hack put in place because for cases where a block had only one tx, which was system
-		// e.g. 50075104 on bor.
-		// the receipt calculation stored 0 for logIdxAfterTx, which leads to underflow
-		// this check allows to adjust for that error (first logIndex is 0 for such cases)
-		// can be removed when receipt files fixed and all users are sure to have it (v2.2)
-		if logIdxAfterTx >= uint(len(receiptLogs)) {
-			logIndex = logIdxAfterTx - uint(len(receiptLogs))
+	/*
+		var logIndex uint
+		if receiptWithFirstLogIdx {
+			logIndex = logIdxAfterTx
+		} else {
+			// this check is a hack put in place because for cases where a block had only one tx, which was system
+			// e.g. 50075104 on bor.
+			// the receipt calculation stored 0 for logIdxAfterTx, which leads to underflow
+			// this check allows to adjust for that error (first logIndex is 0 for such cases)
+			// can be removed when receipt files fixed and all users are sure to have it (v2.2)
+			if logIdxAfterTx >= uint(len(receiptLogs)) {
+				logIndex = logIdxAfterTx - uint(len(receiptLogs))
+			}
 		}
-	}
+	*/
 	for i, l := range receiptLogs {
 		l.TxIndex = txIndex
-		l.Index = logIndex + uint(i)
+		l.Index = logIdxAfterTx + uint(i)
 	}
 	return receiptLogs, nil
 }

@@ -533,7 +533,7 @@ func (c *bigModExp) RequiredGas(input []byte) uint64 {
 	// If exp is bigger than uint32:
 	if expLen256.CmpUint64(lenLimit) > 0 {
 		// Before EIP-7883, 0 multiplication complexity cancels the big exp.
-		if (!c.osaka || !c.madhugiri) && baseLen256.IsZero() && modLen256.IsZero() {
+		if (!c.osaka && !c.madhugiri) && baseLen256.IsZero() && modLen256.IsZero() {
 			return minGas
 		}
 		// Otherwise, the gas cost will be huge.

@@ -273,6 +273,14 @@ func New(
 			bhilaiBlockU64 := bhilaiBlock.Uint64()
 			res.bhilaiBlock = &bhilaiBlockU64
 		}
+		madhugiriBlock := chainConfig.Bor.GetMadhugiriBlock()
+		if madhugiriBlock != nil {
+			if !madhugiriBlock.IsUint64() {
+				return nil, errors.New("madhugiriBlock overflow")
+			}
+			madhugiriBlockU64 := madhugiriBlock.Uint64()
+			res.madhugiriBlock = &madhugiriBlockU64
+		}
 	}
 	if chainConfig.CancunTime != nil {
 		if !chainConfig.CancunTime.IsUint64() {

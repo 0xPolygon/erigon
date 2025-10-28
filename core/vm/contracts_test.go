@@ -61,6 +61,7 @@ var allPrecompiles = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{0x05}):       &bigModExp{eip2565: false},
 	common.BytesToAddress([]byte{0xa5}):       &bigModExp{eip2565: true},
 	common.BytesToAddress([]byte{0xb5}):       &bigModExp{osaka: true},
+	common.BytesToAddress([]byte{0xc5}):       &bigModExp{madhugiri: true},
 	common.BytesToAddress([]byte{0x06}):       &bn254AddIstanbul{},
 	common.BytesToAddress([]byte{0x07}):       &bn254ScalarMulIstanbul{},
 	common.BytesToAddress([]byte{0x08}):       &bn254PairingIstanbul{},
@@ -244,7 +245,12 @@ func BenchmarkPrecompiledModExpEip2565(b *testing.B) { benchJson("modexp_eip2565
 func TestPrecompiledModExpEip7883(t *testing.T)      { testJson("modexp_eip7883", "b5", t) }
 func BenchmarkPrecompiledModExpEip7883(b *testing.B) { benchJson("modexp_eip7883", "b5", b) }
 
+func TestPrecompiledModExpMadhugiri(t *testing.T)      { testJson("modexp_eip7883", "c5", t) }
+func BenchmarkPrecompiledModExpMadhugiri(b *testing.B) { benchJson("modexp_eip7883", "c5", b) }
+
 func TestPrecompiledModExpEip7823Fail(t *testing.T) { testJsonFail("modexp-eip7823", "b5", t) }
+
+func TestPrecompiledModExpMadhugiriFail(t *testing.T) { testJsonFail("modexp-eip7823", "c5", t) }
 
 // Tests the sample inputs from the elliptic curve addition EIP 213.
 func TestPrecompiledBn254Add(t *testing.T)      { testJson("bn254Add", "06", t) }

@@ -60,6 +60,8 @@ type PrecompiledContract interface {
 
 func Precompiles(chainRules *chain.Rules) map[common.Address]PrecompiledContract {
 	switch {
+	case chainRules.IsMadhugiri:
+		return PrecompiledContractsMadhugiri
 	case chainRules.IsOsaka:
 		return PrecompiledContractsOsaka
 	case chainRules.IsBhilai:
@@ -218,7 +220,29 @@ var PrecompiledContractsOsaka = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{0x01, 0x00}): &p256Verify{eip7951: true},
 }
 
+var PrecompiledContractsMadhugiri = map[common.Address]PrecompiledContract{
+	common.BytesToAddress([]byte{0x01}):       &ecrecover{},
+	common.BytesToAddress([]byte{0x02}):       &sha256hash{},
+	common.BytesToAddress([]byte{0x03}):       &ripemd160hash{},
+	common.BytesToAddress([]byte{0x04}):       &dataCopy{},
+	common.BytesToAddress([]byte{0x05}):       &bigModExp{madhugiri: true},
+	common.BytesToAddress([]byte{0x06}):       &bn254AddIstanbul{},
+	common.BytesToAddress([]byte{0x07}):       &bn254ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{0x08}):       &bn254PairingIstanbul{},
+	common.BytesToAddress([]byte{0x09}):       &blake2F{},
+	common.BytesToAddress([]byte{0x0a}):       &pointEvaluation{},
+	common.BytesToAddress([]byte{0x0b}):       &bls12381G1Add{},
+	common.BytesToAddress([]byte{0x0c}):       &bls12381G1MultiExp{},
+	common.BytesToAddress([]byte{0x0d}):       &bls12381G2Add{},
+	common.BytesToAddress([]byte{0x0e}):       &bls12381G2MultiExp{},
+	common.BytesToAddress([]byte{0x0f}):       &bls12381Pairing{},
+	common.BytesToAddress([]byte{0x10}):       &bls12381MapFpToG1{},
+	common.BytesToAddress([]byte{0x11}):       &bls12381MapFp2ToG2{},
+	common.BytesToAddress([]byte{0x01, 0x00}): &p256Verify{},
+}
+
 var (
+	PrecompiledAddressesMadhugiri []common.Address
 	PrecompiledAddressesOsaka     []common.Address
 	PrecompiledAddressesPrague    []common.Address
 	PrecompiledAddressesNapoli    []common.Address
@@ -258,11 +282,16 @@ func init() {
 	for k := range PrecompiledContractsOsaka {
 		PrecompiledAddressesOsaka = append(PrecompiledAddressesOsaka, k)
 	}
+	for k := range PrecompiledContractsMadhugiri {
+		PrecompiledAddressesMadhugiri = append(PrecompiledAddressesMadhugiri, k)
+	}
 }
 
 // ActivePrecompiles returns the precompiles enabled with the current configuration.
 func ActivePrecompiles(rules *chain.Rules) []common.Address {
 	switch {
+	case rules.IsMadhugiri:
+		return PrecompiledAddressesMadhugiri
 	case rules.IsOsaka:
 		return PrecompiledAddressesOsaka
 	case rules.IsBhilai:
@@ -406,8 +435,9 @@ func (c *dataCopy) Name() string {
 
 // bigModExp implements a native big integer exponential modular operation.
 type bigModExp struct {
-	eip2565 bool
-	osaka   bool // EIP-7823 & 7883
+	eip2565   bool
+	osaka     bool // EIP-7823 & 7883
+	madhugiri bool
 }
 
 // modExpMultComplexityEip2565 implements modExp multiplication complexity formula, as defined in EIP-2565
@@ -472,7 +502,7 @@ func (c *bigModExp) RequiredGas(input []byte) uint64 {
 	var finalDivisor uint64
 	var calcMultComplexity func(uint32) uint64
 	switch {
-	case c.osaka:
+	case c.osaka || c.madhugiri:
 		minGas = 500
 		adjExpFactor = 16
 		finalDivisor = 1
@@ -503,7 +533,7 @@ func (c *bigModExp) RequiredGas(input []byte) uint64 {
 	// If exp is bigger than uint32:
 	if expLen256.CmpUint64(lenLimit) > 0 {
 		// Before EIP-7883, 0 multiplication complexity cancels the big exp.
-		if !c.osaka && baseLen256.IsZero() && modLen256.IsZero() {
+		if (!c.osaka || !c.madhugiri) && baseLen256.IsZero() && modLen256.IsZero() {
 			return minGas
 		}
 		// Otherwise, the gas cost will be huge.
@@ -572,7 +602,7 @@ func (c *bigModExp) Run(input []byte) ([]byte, error) {
 		expLenHighBitsAreZero  = allZero(header[32 : 64-8])
 		modLenHighBitsAreZero  = allZero(header[64 : 96-8])
 	)
-	if c.osaka {
+	if c.osaka || c.madhugiri {
 		// EIP-7823: Set upper bounds for MODEXP
 		if !baseLenHighBitsAreZero || baseLen > 1024 {
 			return nil, errModExpBaseLengthTooLarge

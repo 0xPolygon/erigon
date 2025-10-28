@@ -618,7 +618,7 @@ func (b *SimulatedBackend) EstimateGas(ctx context.Context, call ethereum.CallMs
 	} else {
 		hi = b.pendingBlock.GasLimit()
 	}
-	if hi > params.MaxTxnGasLimit && b.m.ChainConfig.IsOsaka(b.pendingBlock.Time()) {
+	if hi > params.MaxTxnGasLimit && (b.m.ChainConfig.IsOsaka(b.pendingBlock.Time()) || (b.m.ChainConfig.Bor != nil && b.m.ChainConfig.Bor.IsMadhugiri(b.pendingBlock.NumberU64()))) {
 		// Cap the maximum gas allowance according to EIP-7825 if Osaka
 		hi = params.MaxTxnGasLimit
 	}

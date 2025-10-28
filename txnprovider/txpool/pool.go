@@ -146,6 +146,8 @@ type TxPool struct {
 	isPostPrague            atomic.Bool
 	osakaTime               *uint64
 	isPostOsaka             atomic.Bool
+	madhugiriBlock          *uint64
+	isPostMadhugiri         atomic.Bool
 	feeCalculator           FeeCalculator
 	p2pFetcher              *Fetch
 	p2pSender               *Send
@@ -994,7 +996,7 @@ func toBlobs(_blobs [][]byte) []*goethkzg.Blob {
 func (p *TxPool) validateTx(txn *TxnSlot, isLocal bool, stateCache kvcache.CacheView) txpoolcfg.DiscardReason {
 	isEIP3860 := p.isShanghai() || p.isAgra()
 	isPrague := p.isPrague() || p.isBhilai()
-	isEIP7825 := p.isOsaka()
+	isEIP7825 := p.isOsaka() || p.isMadhugiri()
 	if isEIP3860 && txn.Creation && txn.DataLen > params.MaxInitCodeSize {
 		return txpoolcfg.InitCodeTooLarge // EIP-3860
 	}
@@ -1286,6 +1288,10 @@ func (p *TxPool) isPrague() bool {
 
 func (p *TxPool) isOsaka() bool {
 	return isTimeBasedForkActivated(&p.isPostOsaka, p.osakaTime)
+}
+
+func (p *TxPool) isMadhugiri() bool {
+	return p.isBlockNumBasedForkActivated(&p.isPostMadhugiri, p.madhugiriBlock)
 }
 
 func (p *TxPool) GetMaxBlobsPerBlock() uint64 {

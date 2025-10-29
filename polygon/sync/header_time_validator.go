@@ -30,8 +30,8 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 )
 
-var VeBlopNewSpanTimeout = 8 * time.Second     // timeout for waiting for a new span
-var VeBlopBlockTimeout = 4 * time.Second       // time for a block to be considered late
+var VeBlopNewSpanTimeout = 12 * time.Second    // timeout for waiting for a new span
+var VeBlopBlockTimeout = 6 * time.Second       // time for a block to be considered late
 var DefaultRecentHeadersCapacity uint64 = 4096 // capacity of recent headers TTL cache
 
 type HeaderTimeValidator struct {

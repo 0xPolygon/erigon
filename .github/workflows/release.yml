@@ -9,11 +9,10 @@ env:
   TEST_CHAIN: "mainnet"
   BUILDER_IMAGE: "golang:1.24-bookworm"
   DOCKER_BASE_IMAGE: "debian:12-slim"
-  APP_REPO: "erigontech/erigon"
+  APP_REPO: "0xpolygon/erigon"
   PACKAGE: "github.com/erigontech/erigon"
   BINARIES: "erigon downloader evm caplin capcli integration rpcdaemon sentry txpool"
-  DOCKERHUB_REPOSITORY: "erigontech/erigon"
-  DOCKERHUB_REPOSITORY_DEV: "erigontech/dev-erigon"
+  DOCKERHUB_REPOSITORY: "0xpolygon/erigon"
   DOCKERFILE_PATH: "Dockerfile"
   LABEL_DESCRIPTION: "Erigon is an implementation of Ethereum (execution layer with embeddable consensus layer), on the efficiency frontier. Archive Node by default."
 
@@ -48,8 +47,7 @@ on:
 jobs:
 
   build-release:
-    #runs-on: ubuntu-latest
-    runs-on: [devops-01-self-hosted]
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     timeout-minutes: 60
     name: Create git tag, build and publish Release Artifacts
     outputs:
@@ -106,8 +104,8 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567  ## v3.3.0
         with:
-          username: ${{ secrets.ORG_DOCKERHUB_ERIGONTECH_USERNAME }}
-          password: ${{ secrets.ORG_DOCKERHUB_ERIGONTECH_TOKEN }}
+          username: ${{ secrets.DOCKERHUB }}
+          password: ${{ secrets.DOCKERHUB_KEY }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -118,7 +116,7 @@ jobs:
       - name: Build and push temporary multiplatform image, store outputs locally for further processing
         env:
           RELEASE_VERSION: ${{ inputs.release_version }}
-          DOCKER_URL: ${{ env.DOCKERHUB_REPOSITORY_DEV }}
+          DOCKER_URL: ${{ env.DOCKERHUB_REPOSITORY }}
           CHECKOUT_REF: ${{ inputs.checkout_ref }}
         run: |
           cd erigon;
@@ -130,10 +128,10 @@ jobs:
             --sbom=true \
             --platform linux/amd64,linux/amd64/v2,linux/arm64 \
             --label org.opencontainers.image.created=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
-            --label org.opencontainers.image.authors="https://github.com/erigontech/erigon/graphs/contributors" \
-            --label org.opencontainers.image.url="https://github.com/erigontech/erigon/tree/${CHECKOUT_REF}" \
+            --label org.opencontainers.image.authors="https://github.com/0xpolygon/erigon/graphs/contributors" \
+            --label org.opencontainers.image.url="https://github.com/0xpolygon/erigon/tree/${CHECKOUT_REF}" \
             --label org.opencontainers.image.documentation="https://docs.erigon.tech/" \
-            --label org.opencontainers.image.source="https://github.com/erigontech/erigon" \
+            --label org.opencontainers.image.source="https://github.com/0xpolygon/erigon" \
             --label org.opencontainers.image.version=${RELEASE_VERSION} \
             --label org.opencontainers.image.revision=${{ steps.getCommitId.outputs.commit-id }} \
             --label org.opencontainers.image.vcs-ref-short=${{ steps.getCommitId.outputs.short-commit-id }} \
@@ -214,7 +212,7 @@ jobs:
   publish-docker-image:
     needs: [ build-release ]
     if: always() && contains(needs.build-release.result, 'success')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     timeout-minutes: 30
     name: Docker image
 
@@ -246,30 +244,26 @@ jobs:
     - name: Login to Docker Hub
       uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567  ## v3.3.0
       with:
-        username: ${{ secrets.ORG_DOCKERHUB_ERIGONTECH_USERNAME }}
-        password: ${{ secrets.ORG_DOCKERHUB_ERIGONTECH_TOKEN }}
+        username: ${{ secrets.DOCKERHUB }}
+        password: ${{ secrets.DOCKERHUB_KEY }}
 
     - name: Push multi-platform docker images (${{ env.BUILD_VERSION }}${{ inputs.publish_latest_tag == true && ' and latest tag'}}) in case perform_release is true
       if: ${{ inputs.perform_release }}
       env:
-        RELEASE_VERSION: ${{ inputs.release_version }}
+        BUILD_VERSION: ${{ inputs.release_version }}
         DOCKER_URL: ${{ env.DOCKERHUB_REPOSITORY }}
-        DOCKER_URL_TMP: ${{ env.DOCKERHUB_REPOSITORY_DEV }}
-        PUBLISH_LATEST_TAG: ${{ inputs.publish_latest_tag }}
       run: |
         echo Publishing docker image: 
-        skopeo copy --multi-arch all docker://${{ env.DOCKER_URL_TMP }}:${RELEASE_VERSION} docker://${{ env.DOCKER_URL }}:${RELEASE_VERSION}
-        if [ "x${PUBLISH_LATEST_TAG}" == "xtrue" ]; then
+        # images are already built+push in build-release
+        if [ "x${{ inputs.publish_latest_tag }}" == "xtrue" ]; then
           echo Publishing latest tag:
-          skopeo copy --multi-arch all docker://${{ env.DOCKER_URL_TMP }}:${RELEASE_VERSION} docker://${{ env.DOCKER_URL }}:latest
+          skopeo copy --multi-arch all docker://${{ env.DOCKER_URL }}:${{ env.BUILD_VERSION }} docker://${{ env.DOCKER_URL }}:latest
         fi
-        echo -n Deleting temporary image:
-        skopeo delete docker://${{ env.DOCKER_URL_TMP }}:${RELEASE_VERSION} && echo " ...done"
 
   publish-release:
     needs: [ build-debian-pkg, publish-docker-image, build-release ]
     if: always() && contains(needs.build-release.result, 'success') && contains(needs.build-debian-pkg.result, 'success') && contains(needs.publish-docker-image.result, 'success')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     timeout-minutes: 15
     name: Publish release notes
 
@@ -329,7 +323,7 @@ jobs:
     name: "In case of failure: remove remote git tag pointing to the new version."
     needs: [ publish-release, build-release, build-debian-pkg, publish-docker-image ]
     if: always() && !contains(needs.build-release.result, 'success') && !contains(needs.publish-release.result, 'success') && !contains(needs.build-debian-pkg.result, 'success') && !contains(needs.publish-docker-image.result, 'success')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     env:
       RELEASE_VERSION: ${{ inputs.release_version }}
     steps:

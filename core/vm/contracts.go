@@ -437,7 +437,7 @@ func (c *dataCopy) Name() string {
 type bigModExp struct {
 	eip2565   bool
 	osaka     bool // EIP-7823 & 7883
-	madhugiri bool
+	madhugiri bool // EIP-7823 & 7883
 }
 
 // modExpMultComplexityEip2565 implements modExp multiplication complexity formula, as defined in EIP-2565

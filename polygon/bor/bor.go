@@ -1308,6 +1308,10 @@ func (c *Bor) CommitStates(
 		if _, err := syscall(*event.To(), event.Data()); err != nil {
 			return nil, err
 		}
+		// Can be empty in tests
+		if len(event.Data()) == 0 {
+			continue
+		}
 
 		var ev bridge.EventRecordWithTime
 		if err := ev.UnmarshallBytes(event.Data()); err != nil {

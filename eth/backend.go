@@ -1702,6 +1702,7 @@ func (s *Ethereum) Start() error {
 
 				if err != nil && !errors.Is(err, context.Canceled) {
 					s.logger.Error("[polygon.sync] downloader stage crashed - stopping node", "err", err)
+					time.Sleep(5 * time.Minute)
 					err = s.stopNode()
 					if err != nil {
 						s.logger.Error("could not stop node", "err", err)
@@ -1712,11 +1713,13 @@ func (s *Ethereum) Start() error {
 			ctx := s.sentryCtx
 			err := s.polygonSyncService.Run(ctx)
 			if err == nil || errors.Is(err, context.Canceled) {
+				time.Sleep(5 * time.Minute)
 				return err
 			}
 
 			s.logger.Error("[polygon.sync] crashed - stopping node", "err", err)
 			go func() { // call stopNode in another goroutine to avoid deadlock
+				time.Sleep(5 * time.Minute)
 				stopErr := s.stopNode()
 				if stopErr != nil {
 					s.logger.Error("[polygon.sync] could not stop node", "err", stopErr)

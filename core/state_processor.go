@@ -134,7 +134,6 @@ func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) (common
 		DisableReturnData: false,
 		Debug:             true,
 	}
-	panic("tracing is enabled for testing purposes")
 	baseDir := "/home/ubuntu/traces"
 	getTracer := func() (*tracing.Hooks, error) {
 		traceFile, err2 := os.Create(path.Join(baseDir, fmt.Sprintf("trace-%d-%v.json", header.Number.Uint64(), txn.Hash().Hex())))

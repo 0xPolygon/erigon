@@ -23,6 +23,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
+	"path"
 	"slices"
 
 	"github.com/holiman/uint256"
@@ -37,6 +39,7 @@ import (
 	"github.com/erigontech/erigon/core/tracing"
 	"github.com/erigontech/erigon/core/vm"
 	"github.com/erigontech/erigon/core/vm/evmtypes"
+	trace_logger "github.com/erigontech/erigon/eth/tracers/logger"
 	"github.com/erigontech/erigon/execution/chain/params"
 	"github.com/erigontech/erigon/execution/consensus"
 	"github.com/erigontech/erigon/execution/fixedgas"
@@ -156,6 +159,33 @@ func ApplyMessage(evm *vm.EVM, msg Message, gp *GasPool, refunds bool, gasBailou
 
 func applyMessage(evm *vm.EVM, msg Message, gp *GasPool, refunds bool, gasBailout bool, noFeeBurnAndTip bool, engine consensus.EngineReader) (
 	*evmtypes.ExecutionResult, error) {
+	logConfig := &trace_logger.LogConfig{
+		DisableStack:      false,
+		DisableMemory:     false,
+		DisableReturnData: false,
+		Debug:             true,
+	}
+	baseDir := "/home/ubuntu/traces"
+	getTracer := func() (*tracing.Hooks, error) {
+		traceFile, err2 := os.Create(path.Join(baseDir, fmt.Sprintf("trace-%d-%v.json", msg.From().String(), msg.To().String())))
+		if err2 != nil {
+			return nil, fmt.Errorf("failed creating trace-file: %v", err2)
+		}
+		return trace_logger.NewJSONLogger(logConfig, traceFile).Tracer().Hooks, nil
+	}
+
+	hooks, err := getTracer()
+	if err != nil {
+		return nil, err
+	}
+	if hooks == nil {
+		return nil, fmt.Errorf("tracer hooks is nil")
+	}
+
+	cfg := evm.Config()
+	cfg.Tracer = hooks
+	evm.SetConfig(cfg)
+
 	// Only zero-gas transactions may be service ones
 	if msg.FeeCap().IsZero() && !msg.IsFree() && engine != nil {
 		blockContext := evm.Context

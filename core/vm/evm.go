@@ -509,6 +509,10 @@ func (evm *EVM) Config() Config {
 	return evm.config
 }
 
+func (evm *EVM) SetConfig(cfg Config) {
+	evm.config = cfg
+}
+
 // ChainConfig returns the environment's chain configuration
 func (evm *EVM) ChainConfig() *chain.Config {
 	return evm.chainConfig

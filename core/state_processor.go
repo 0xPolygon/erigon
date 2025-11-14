@@ -20,10 +20,16 @@
 package core
 
 import (
+	"fmt"
+	"os"
+	"path"
+
 	"github.com/erigontech/erigon-lib/common"
 	"github.com/erigontech/erigon/core/state"
+	"github.com/erigontech/erigon/core/tracing"
 	"github.com/erigontech/erigon/core/vm"
 	"github.com/erigontech/erigon/core/vm/evmtypes"
+	trace_logger "github.com/erigontech/erigon/eth/tracers/logger"
 	"github.com/erigontech/erigon/execution/chain"
 	"github.com/erigontech/erigon/execution/consensus"
 	"github.com/erigontech/erigon/execution/types"
@@ -121,6 +127,32 @@ func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) (common
 	cfg.SkipAnalysis = SkipAnalysis(config, header.Number.Uint64())
 
 	blockContext := NewEVMBlockContext(header, blockHashFunc, engine, author, config)
+
+	logConfig := &trace_logger.LogConfig{
+		DisableStack:      false,
+		DisableMemory:     false,
+		DisableReturnData: false,
+		Debug:             true,
+	}
+	baseDir := "/home/ubuntu/traces"
+	getTracer := func() (*tracing.Hooks, error) {
+		traceFile, err2 := os.Create(path.Join(baseDir, fmt.Sprintf("trace-%d-%v.json", header.Number.Uint64(), txn.Hash().Hex())))
+		if err2 != nil {
+			return nil, fmt.Errorf("failed creating trace-file: %v", err2)
+		}
+		return trace_logger.NewJSONLogger(logConfig, traceFile).Tracer().Hooks, nil
+	}
+
+	hooks, err := getTracer()
+	if err != nil {
+		return nil, nil, err
+	}
+	if hooks == nil {
+		return nil, nil, fmt.Errorf("tracer hooks is nil")
+	}
+
+	cfg.Tracer = hooks
+
 	vmenv := vm.NewEVM(blockContext, evmtypes.TxContext{}, ibs, config, cfg)
 
 	return applyTransaction(config, engine, gp, ibs, stateWriter, header, txn, gasUsed, usedBlobGas, vmenv, cfg)

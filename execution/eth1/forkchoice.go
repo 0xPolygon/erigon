@@ -234,6 +234,30 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, original
 		sendForkchoiceErrorWithoutWaiting(e.logger, outcomeCh, err, false)
 		return
 	}
+
+	// DEBUG: Return success immediately for requests beyond 29020819
+	if fcuHeader != nil && fcuHeader.Number.Uint64() > 29020819 {
+		e.logger.Info("[DEBUG] Fork choice target beyond limit - ignoring", "requested", fcuHeader.Number.Uint64(), "limit", 29020819)
+
+		// Get the actual current head at 29020819
+		currentHeader, err := e.blockReader.HeaderByNumber(ctx, tx, 29020819)
+		if err == nil && currentHeader != nil {
+			currentHash := currentHeader.Hash()
+			// Return success with current valid hash
+			sendForkchoiceReceiptWithoutWaiting(outcomeCh, &executionproto.ForkChoiceReceipt{
+				LatestValidHash: gointerfaces.ConvertHashToH256(currentHash),
+				Status:          executionproto.ExecutionStatus_Success,
+			}, false)
+		} else {
+			// Fallback: just return success
+			sendForkchoiceReceiptWithoutWaiting(outcomeCh, &executionproto.ForkChoiceReceipt{
+				LatestValidHash: gointerfaces.ConvertHashToH256(common.Hash{}),
+				Status:          executionproto.ExecutionStatus_Success,
+			}, false)
+		}
+		return
+	}
+
 	if fcuHeader == nil {
 		sendForkchoiceErrorWithoutWaiting(e.logger, outcomeCh, fmt.Errorf("forkchoice: block %x not found or was marked invalid", blockHash), false)
 		return
@@ -509,18 +533,29 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, original
 	if headHash != blockHash {
 		blockHashBlockNum, _ := e.blockReader.HeaderNumber(ctx, tx, blockHash)
 
-		status = executionproto.ExecutionStatus_BadBlock
-		validationError = "headHash and blockHash mismatch"
-		if log {
-			headNum := "unknown"
-			if headNumber != nil {
-				headNum = strconv.FormatUint(*headNumber, 10)
+		// DEBUG: Accept mismatch if we're at or below our limit (29020819)
+		if headNumber != nil && *headNumber <= 29020819 {
+			if log {
+				e.logger.Warn("[DEBUG] Fork choice mismatch at limit - accepting",
+					"head", headHash, "head block", *headNumber,
+					"requested", blockHash, "requested block", blockHashBlockNum)
 			}
-			hashBlockNum := "unknown"
-			if blockHashBlockNum != nil {
-				hashBlockNum = strconv.FormatUint(*blockHashBlockNum, 10)
+			// Return success to keep node running at 29020819
+			status = executionproto.ExecutionStatus_Success
+		} else {
+			status = executionproto.ExecutionStatus_BadBlock
+			validationError = "headHash and blockHash mismatch"
+			if log {
+				headNum := "unknown"
+				if headNumber != nil {
+					headNum = strconv.FormatUint(*headNumber, 10)
+				}
+				hashBlockNum := "unknown"
+				if blockHashBlockNum != nil {
+					hashBlockNum = strconv.FormatUint(*blockHashBlockNum, 10)
+				}
+				e.logger.Warn("bad forkchoice", "head", headHash, "head block", headNum, "hash", blockHash, "hash block", hashBlockNum)
 			}
-			e.logger.Warn("bad forkchoice", "head", headHash, "head block", headNum, "hash", blockHash, "hash block", hashBlockNum)
 		}
 	} else {
 		valid, err := e.verifyForkchoiceHashes(ctx, tx, blockHash, finalizedHash, safeHash)

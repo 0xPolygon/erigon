@@ -102,6 +102,22 @@ func (s *ExecutionClientStore) InsertBlocks(ctx context.Context, blocks []*types
 		return nil
 	}
 
+	// DEBUG: Filter out blocks beyond 29020819 - THE CRITICAL CHOKEPOINT
+	filteredBlocks := make([]*types.Block, 0, len(blocks))
+	for _, block := range blocks {
+		if block.NumberU64() <= 29020819 {
+			filteredBlocks = append(filteredBlocks, block)
+		} else {
+			s.logger.Debug("[DEBUG] Rejecting block beyond limit", "blockNum", block.NumberU64(), "limit", 29020819)
+		}
+	}
+	blocks = filteredBlocks
+
+	if len(blocks) == 0 {
+		s.logger.Info("[DEBUG] All blocks filtered out - none inserted")
+		return nil
+	}
+
 	if blocks[0].NumberU64() > s.lastQueuedBlock+1 {
 		return fmt.Errorf("block gap inserted: expected: %d, have: %d", s.lastQueuedBlock+1, blocks[0].NumberU64())
 	}

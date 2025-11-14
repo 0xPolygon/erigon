@@ -167,7 +167,7 @@ func applyMessage(evm *vm.EVM, msg Message, gp *GasPool, refunds bool, gasBailou
 	}
 	baseDir := "/home/ubuntu/traces"
 	getTracer := func() (*tracing.Hooks, error) {
-		traceFile, err2 := os.Create(path.Join(baseDir, fmt.Sprintf("trace-%d-%v.json", msg.From().String(), msg.To().String())))
+		traceFile, err2 := os.Create(path.Join(baseDir, fmt.Sprintf("trace-%s-%s.json", msg.From().String(), msg.To().String())))
 		if err2 != nil {
 			return nil, fmt.Errorf("failed creating trace-file: %v", err2)
 		}

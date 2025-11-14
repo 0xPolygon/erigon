@@ -30,6 +30,7 @@ import (
 	"github.com/erigontech/erigon-lib/common/empty"
 	"github.com/erigontech/erigon-lib/common/u256"
 	"github.com/erigontech/erigon-lib/crypto"
+	"github.com/erigontech/erigon-lib/log/v3"
 	"github.com/erigontech/erigon/core/state"
 	"github.com/erigontech/erigon/core/tracing"
 	"github.com/erigontech/erigon/core/vm/evmtypes"
@@ -189,6 +190,12 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr common.Address, input 
 		evm.captureBegin(depth, typ, caller.Address(), addr, isPrecompile, input, gas, v, code)
 		defer func(startGas uint64) {
 			evm.captureEnd(depth, typ, startGas, leftOverGas, ret, err)
+		}(gas)
+	}
+
+	if evm.Context.BlockNumber == 29020820 {
+		defer func(startGas uint64) {
+			log.Info("[debug] completed evm.call", "startGas", startGas, "leftOverGas", leftOverGas, "usedGas", startGas-leftOverGas)
 		}(gas)
 	}
 

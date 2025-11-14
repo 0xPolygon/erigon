@@ -442,6 +442,8 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (result *
 		}()
 	}
 
+	number := st.evm.Context.BlockNumber
+
 	coinbase := st.evm.Context.Coinbase
 	senderInitBalance, err := st.state.GetBalance(st.msg.From())
 	if err != nil {
@@ -537,8 +539,6 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (result *
 		vmerr error // vm errors do not effect consensus and are therefore not assigned to err
 	)
 
-	log.Info("[debug] about to do evm execution", "tracer", st.evm.Config().Tracer != nil)
-
 	if contractCreation {
 		// The reason why we don't increment nonce here is that we need the original
 		// nonce to calculate the address of the contract that is being created
@@ -548,7 +548,9 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (result *
 	} else {
 		gasBeforeCall := st.gasRemaining
 		ret, st.gasRemaining, vmerr = st.evm.Call(sender, st.to(), st.data, st.gasRemaining, st.value, bailout)
-		log.Info("[debug] done evm.call", "remainingGas", gasBeforeCall-st.gasRemaining)
+		if number == 29020820 {
+			log.Info("[debug] done evm.call", "remainingGas", gasBeforeCall-st.gasRemaining)
+		}
 	}
 
 	if refunds && !gasBailout {

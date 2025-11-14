@@ -57,6 +57,9 @@ func (se *serialExecutor) execute(ctx context.Context, tasks []*state.TxTask, gp
 			}
 
 			se.txCount++
+			if txTask.BlockNum == 29_020_820 {
+				log.Info("[debug] adding gas to total gas used", "gas", txTask.GasUsed, "totalBefore", se.gasUsed)
+			}
 			se.gasUsed += txTask.GasUsed
 			mxExecGas.Add(float64(txTask.GasUsed))
 			mxExecTransactions.Add(1)

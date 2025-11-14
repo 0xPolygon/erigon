@@ -218,6 +218,14 @@ func (rw *Worker) RunTxTaskNoLock(txTask *state.TxTask, isMining, skipPostEvalua
 	//ibs.SetTrace(true)
 	ibs.SetHooks(hooks)
 
+	toLog := false
+	if txTask.BlockNum == 29_020_820 {
+		toLog = true
+	}
+	if toLog {
+		log.Info("[debug] about to execute", "blockNum", txTask.BlockNum, "txIndex", txTask.TxIndex, "txNum", txTask.TxNum, "final", txTask.Final)
+	}
+
 	var err error
 	rules, header := txTask.Rules, txTask.Header
 	switch {
@@ -309,6 +317,9 @@ func (rw *Worker) RunTxTaskNoLock(txTask *state.TxTask, isMining, skipPostEvalua
 		}
 		// MA applytx
 		applyRes, err := core.ApplyMessage(rw.evm, msg, rw.taskGasPool, true /* refunds */, false /* gasBailout */, rw.engine)
+		if toLog {
+			log.Info("[debug] done EVM execution", "err", err, "gasUsed", applyRes.GasUsed, "failed", applyRes.Failed())
+		}
 		if err != nil {
 			txTask.Error = err
 			if hooks != nil && hooks.OnTxEnd != nil {

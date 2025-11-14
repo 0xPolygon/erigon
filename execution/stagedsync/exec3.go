@@ -616,6 +616,10 @@ Loop:
 			inputTxNum++
 		}
 
+		if blockNum == 29_020_820 {
+			log.Info("[debug] creating execution tasks", "number", blockNum, "txs", len(txs), "parallel", parallel, "tasks", len(txTasks))
+		}
+
 		// check for consecutive RIP-7560 sequence
 		var isAASequence bool
 		for _, txTask := range txTasks {

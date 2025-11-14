@@ -409,8 +409,8 @@ func BlockPostValidation(gasUsed, blobGasUsed uint64, checkReceipts bool, receip
 			sep = ", "
 		}
 		logger.Warn("gas used mismatch", "block", h.Number.Uint64(), "header", h.GasUsed, "execution", gasUsed, "txgas", txgas)
-		// return fmt.Errorf("gas used by execution: %d, in header: %d, headerNum=%d, %x",
-		// 	gasUsed, h.GasUsed, h.Number.Uint64(), h.Hash())
+		return fmt.Errorf("gas used by execution: %d, in header: %d, headerNum=%d, %x",
+			gasUsed, h.GasUsed, h.Number.Uint64(), h.Hash())
 	}
 
 	if h.BlobGasUsed != nil && blobGasUsed != *h.BlobGasUsed {
@@ -430,14 +430,14 @@ func BlockPostValidation(gasUsed, blobGasUsed uint64, checkReceipts bool, receip
 			if dbg.LogHashMismatchReason() {
 				logReceipts(receipts, txns, chainConfig, h, logger)
 			}
-			// return fmt.Errorf("receiptHash mismatch: %x != %x, headerNum=%d, %x",
-			// 	receiptHash, h.ReceiptHash, h.Number.Uint64(), h.Hash())
+			return fmt.Errorf("receiptHash mismatch: %x != %x, headerNum=%d, %x",
+				receiptHash, h.ReceiptHash, h.Number.Uint64(), h.Hash())
 		}
 
-		// lbloom := types.CreateBloom(receipts)
-		// if lbloom != h.Bloom {
-		// 	return fmt.Errorf("invalid bloom (remote: %x  local: %x)", h.Bloom, lbloom)
-		// }
+		lbloom := types.CreateBloom(receipts)
+		if lbloom != h.Bloom {
+			return fmt.Errorf("invalid bloom (remote: %x  local: %x)", h.Bloom, lbloom)
+		}
 	}
 	return nil
 }

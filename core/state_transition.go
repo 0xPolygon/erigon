@@ -537,6 +537,8 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (result *
 		vmerr error // vm errors do not effect consensus and are therefore not assigned to err
 	)
 
+	log.Info("[debug] about to do evm execution", "tracer", st.evm.Config().Tracer != nil)
+
 	if contractCreation {
 		// The reason why we don't increment nonce here is that we need the original
 		// nonce to calculate the address of the contract that is being created
@@ -544,7 +546,9 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (result *
 		// of the contract's address, but before the execution of the code.
 		ret, _, st.gasRemaining, vmerr = st.evm.Create(sender, st.data, st.gasRemaining, st.value, bailout)
 	} else {
+		gasBeforeCall := st.gasRemaining
 		ret, st.gasRemaining, vmerr = st.evm.Call(sender, st.to(), st.data, st.gasRemaining, st.value, bailout)
+		log.Info("[debug] done evm.call", "remainingGas", gasBeforeCall-st.gasRemaining)
 	}
 
 	if refunds && !gasBailout {
@@ -601,9 +605,9 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (result *
 		}
 	}
 
-	if dbg.TraceGas || st.state.Trace() || st.state.TraceAccount(st.msg.From()) {
-		fmt.Printf("(%d.%d) Fees %x: tipped: %d, burnt: %d, price: %d, gas: %d\n", st.state.TxIndex(), st.state.Incarnation(), st.msg.From(), tipAmount, &burnAmount, st.gasPrice, st.gasUsed())
-	}
+	// if dbg.TraceGas || st.state.Trace() || st.state.TraceAccount(st.msg.From()) {
+	fmt.Printf("(%d.%d) Fees %x: tipped: %d, burnt: %d, price: %d, gas: %d\n", st.state.TxIndex(), st.state.Incarnation(), st.msg.From(), tipAmount, &burnAmount, st.gasPrice, st.gasUsed())
+	// }
 
 	result = &evmtypes.ExecutionResult{
 		GasUsed:             st.gasUsed(),

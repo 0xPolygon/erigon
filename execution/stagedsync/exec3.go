@@ -469,6 +469,9 @@ func ExecV3(ctx context.Context,
 
 Loop:
 	for ; blockNum <= maxBlockNum; blockNum++ {
+		if blockNum == 29020821 {
+			break Loop
+		}
 		shouldGenerateChangesets := shouldGenerateChangeSets(cfg, blockNum, maxBlockNum, initialCycle)
 		changeSet := &changeset2.StateChangeSet{}
 		if shouldGenerateChangesets && blockNum > 0 {

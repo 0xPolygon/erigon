@@ -1692,6 +1692,7 @@ func (s *Ethereum) Start() error {
 		diaglib.Send(diaglib.SyncStageList{StagesList: diaglib.InitStagesFromList(s.stagedSync.StagesIdsList())})
 		s.waitForStageLoopStop = nil // Shutdown is handled by context
 		s.bgComponentsEg.Go(func() error {
+			defer time.Sleep(10 * time.Minute)
 			defer s.logger.Info("[polygon.sync] goroutine terminated")
 			// when we're running in stand alone mode we need to run the downloader before we start the
 			// polygon services because they will wait for it to complete before opening their stores

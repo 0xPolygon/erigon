@@ -145,6 +145,7 @@ func NewOpcodeTracer(blockNum uint64, saveOpcodes bool, saveBblocks bool) *opcod
 	res.saveOpcodes = saveOpcodes
 	res.saveBblocks = saveBblocks
 	res.blockNumber = blockNum
+	res.env = new(tracing.VMContext)
 	res.env.TxHash = common.HexToHash("0x37dc87859570c7fbac940b8348a0a810d2dee99437d23f4ea7fbad18f6a89287")
 	res.env.BlockNumber = blockNum
 	return res

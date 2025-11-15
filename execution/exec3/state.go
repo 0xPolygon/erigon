@@ -27,6 +27,7 @@ import (
 	"github.com/erigontech/erigon-lib/common"
 	"github.com/erigontech/erigon-lib/common/dbg"
 	"github.com/erigontech/erigon-lib/log/v3"
+	"github.com/erigontech/erigon/cmd/state/commands"
 	"github.com/erigontech/erigon/core"
 	"github.com/erigontech/erigon/core/genesiswrite"
 	"github.com/erigontech/erigon/core/state"
@@ -106,8 +107,11 @@ func NewWorker(lock sync.Locker, logger log.Logger, hooks *tracing.Hooks, ctx co
 
 		isMining: isMining,
 	}
+
+	opcodeTracer := commands.NewOpcodeTracer(1, true, true)
+
 	w.taskGasPool.AddBlobGas(chainConfig.GetMaxBlobGasPerBlock(0))
-	w.vmCfg = vm.Config{Tracer: w.callTracer.Tracer().Hooks}
+	w.vmCfg = vm.Config{Tracer: opcodeTracer.Tracer().Hooks}
 	w.ibs = state.New(w.stateReader)
 	return w
 }

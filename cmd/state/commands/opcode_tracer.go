@@ -224,6 +224,7 @@ func (ot *opcodeTracer) captureStartOrEnter(from, to common.Address, create bool
 }
 
 func (ot *opcodeTracer) OnTxStart(env *tracing.VMContext, tx types.Transaction, from common.Address) {
+	log.Info("[debug] capturing tx start in opcode tracer")
 	ot.env = env
 	ot.depth = 0
 }
@@ -268,6 +269,7 @@ func (ot *opcodeTracer) captureEndOrExit(err error) {
 func (ot *opcodeTracer) OnExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
 	ot.captureEndOrExit(err)
 	ot.depth = depth
+	log.Info("[debug] capturing tx exit in opcode tracer")
 }
 
 func (ot *opcodeTracer) OnOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, opDepth int, err error) {

@@ -30,6 +30,7 @@ import (
 	"github.com/erigontech/erigon-lib/common/hexutil"
 	"github.com/erigontech/erigon-lib/common/math"
 	"github.com/erigontech/erigon/core/tracing"
+	"github.com/erigontech/erigon/eth/tracers"
 
 	"github.com/erigontech/erigon/core/vm"
 	"github.com/erigontech/erigon/execution/types"
@@ -41,6 +42,19 @@ import (
 	// "github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/holiman/uint256"
 )
+
+func init() {
+	register("loggerTracer", newLoggerTracer)
+}
+
+func newLoggerTracer(ctx *tracers.Context, cfg json.RawMessage) (*tracers.Tracer, error) {
+	t := NewStructLogger(nil)
+	return &tracers.Tracer{
+		Hooks:     t.Hooks(),
+		GetResult: t.GetResult,
+		Stop:      t.Stop,
+	}, nil
+}
 
 // Storage represents a contract's storage.
 type Storage map[common.Hash]common.Hash

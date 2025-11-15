@@ -20,7 +20,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"reflect"
+
+	"github.com/holiman/uint256"
 )
+
+// U256 marshals/unmarshals as a JSON string with 0x prefix.
+// The zero value marshals as "0x0".
+type U256 uint256.Int
 
 var bytesT = reflect.TypeOf(Bytes(nil))
 

@@ -348,6 +348,20 @@ func (d *BlockDownloader) downloadBlocksUsingWaypoints(
 			}
 		}
 
+		// DEBUG: Hard trim to block 29020819
+		for i := range blocks {
+			if blocks[i].Number().Uint64() > 29020819 {
+				d.logger.Info("[DEBUG] Trimming blocks beyond limit", "original_end", blocks[len(blocks)-1].NumberU64(), "new_end", 29020819)
+				blocks = blocks[:i]
+				break
+			}
+		}
+
+		if len(blocks) == 0 {
+			d.logger.Info("[DEBUG] All blocks trimmed - skipping insertion")
+			continue
+		}
+
 		batchFetchStartTime = time.Now() // reset for next time
 
 		d.logger.Info(
@@ -446,8 +460,10 @@ func (d *BlockDownloader) limitWaypoints(waypoints []heimdall.Waypoint) []heimda
 }
 
 func limitWaypointsEndBlock(waypoints []heimdall.Waypoint, end *uint64) []heimdall.Waypoint {
-	if end == nil {
-		return waypoints
+	// DEBUG: Hard limit to block 29020819
+	debugLimit := uint64(29020819)
+	if end == nil || *end > debugLimit {
+		end = &debugLimit
 	}
 
 	for i, waypoint := range waypoints {

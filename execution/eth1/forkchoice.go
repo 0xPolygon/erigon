@@ -235,21 +235,19 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, original
 		return
 	}
 
-	// DEBUG: Return success immediately for requests beyond 29020819
+	// DEBUG: Handle blocks beyond our limit (29020819)
 	if fcuHeader != nil && fcuHeader.Number.Uint64() > 29020819 {
+		// Block exists but beyond limit - return success and ignore
 		e.logger.Info("[DEBUG] Fork choice target beyond limit - ignoring", "requested", fcuHeader.Number.Uint64(), "limit", 29020819)
 
-		// Get the actual current head at 29020819
 		currentHeader, err := e.blockReader.HeaderByNumber(ctx, tx, 29020819)
 		if err == nil && currentHeader != nil {
 			currentHash := currentHeader.Hash()
-			// Return success with current valid hash
 			sendForkchoiceReceiptWithoutWaiting(outcomeCh, &executionproto.ForkChoiceReceipt{
 				LatestValidHash: gointerfaces.ConvertHashToH256(currentHash),
 				Status:          executionproto.ExecutionStatus_Success,
 			}, false)
 		} else {
-			// Fallback: just return success
 			sendForkchoiceReceiptWithoutWaiting(outcomeCh, &executionproto.ForkChoiceReceipt{
 				LatestValidHash: gointerfaces.ConvertHashToH256(common.Hash{}),
 				Status:          executionproto.ExecutionStatus_Success,
@@ -259,6 +257,30 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, original
 	}
 
 	if fcuHeader == nil {
+		// Block not found - if we're at or near our limit, assume this is a filtered block
+		if finishProgressBefore <= 29020819 {
+			// We're at our limit and block doesn't exist - it was likely filtered
+			e.logger.Info("[DEBUG] Fork choice block not found (likely filtered) - returning success",
+				"hash", originalBlockHash, "currentFinish", finishProgressBefore, "limit", 29020819)
+
+			// Return current valid head
+			currentHeader, err := e.blockReader.HeaderByNumber(ctx, tx, finishProgressBefore)
+			if err == nil && currentHeader != nil {
+				currentHash := currentHeader.Hash()
+				sendForkchoiceReceiptWithoutWaiting(outcomeCh, &executionproto.ForkChoiceReceipt{
+					LatestValidHash: gointerfaces.ConvertHashToH256(currentHash),
+					Status:          executionproto.ExecutionStatus_Success,
+				}, false)
+			} else {
+				sendForkchoiceReceiptWithoutWaiting(outcomeCh, &executionproto.ForkChoiceReceipt{
+					LatestValidHash: gointerfaces.ConvertHashToH256(common.Hash{}),
+					Status:          executionproto.ExecutionStatus_Success,
+				}, false)
+			}
+			return
+		}
+
+		// Block truly not found and we're past our limit - this is an error
 		sendForkchoiceErrorWithoutWaiting(e.logger, outcomeCh, fmt.Errorf("forkchoice: block %x not found or was marked invalid", blockHash), false)
 		return
 	}

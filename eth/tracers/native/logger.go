@@ -44,10 +44,10 @@ import (
 )
 
 func init() {
-	register("loggerTracer", newLoggerTracer)
+	register("structLogTracer", newStructLogTracer)
 }
 
-func newLoggerTracer(ctx *tracers.Context, cfg json.RawMessage) (*tracers.Tracer, error) {
+func newStructLogTracer(ctx *tracers.Context, cfg json.RawMessage) (*tracers.Tracer, error) {
 	t := NewStructLogger(nil)
 	return &tracers.Tracer{
 		Hooks:     t.Hooks(),

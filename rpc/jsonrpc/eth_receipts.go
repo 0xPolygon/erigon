@@ -570,27 +570,5 @@ func (api *APIImpl) GetBlockReceipts(ctx context.Context, numberOrHash rpc.Block
 		}
 	}
 
-	var borTx types.Transaction = bortypes.NewBorTransaction()
-	if chainConfig.Bor != nil && chainConfig.Bor.IsMadhugiri(blockNum) && len(receipts)+1 == len(block.Transactions()) {
-		borTx = block.Transactions()[len(block.Transactions())-1]
-		if borTx.Type() != types.StateSyncTxType {
-			return result, nil
-		}
-	}
-
-	events, err := api.bridgeReader.Events(ctx, block.Hash(), blockNum)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(events) != 0 {
-		borReceipt, err := api.borReceiptGenerator.GenerateBorReceipt(ctx, tx, block, events, chainConfig)
-		if err != nil {
-			return nil, err
-		}
-
-		result = append(result, ethutils.MarshalReceipt(borReceipt, borTx, chainConfig, block.HeaderNoCopy(), borReceipt.TxHash, false, true))
-	}
-
 	return result, nil
 }

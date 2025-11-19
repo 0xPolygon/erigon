@@ -601,11 +601,15 @@ func (s *Sync) backwardDownloadBlockBatches(
 ) error {
 	rootNum := ccb.Root().Number.Uint64()
 	amount := fromNum - rootNum + 1
+
+	// Use amount * 10 to provide plenty of buffer for finding connection points.
+	// The downloader will naturally stop when it finds a connection point.
+	chainLengthLimit := amount * 10
 	feed, err := s.p2pService.FetchBlocksBackwards(
 		ctx,
 		fromHash,
 		ccb.HeaderReader(),
-		p2p.WithChainLengthLimit(amount),
+		p2p.WithChainLengthLimit(chainLengthLimit),
 		p2p.WithBlocksBatchSize(min(amount, maxBlockBatchDownloadSize)),
 		p2p.WithPeerId(fromPeerId),
 	)

@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 
 	"github.com/RoaringBitmap/roaring/v2"
 
@@ -165,33 +164,6 @@ func (api *APIImpl) GetLogs(ctx context.Context, crit filters.FilterCriteria) (t
 		}
 	}
 
-	// For a whole block query (blockHash set, no address/topics filters),
-	// normalize logIndex to be continuous 0..N-1 in canonical order.
-	if isWholeBlockUnfiltered(crit) && len(rpcLogs) > 0 {
-		sort.Slice(rpcLogs, func(i, j int) bool {
-			if rpcLogs[i].BlockNumber == rpcLogs[j].BlockNumber {
-				if rpcLogs[i].TxIndex == rpcLogs[j].TxIndex {
-					return rpcLogs[i].Index < rpcLogs[j].Index
-				}
-				return rpcLogs[i].TxIndex < rpcLogs[j].TxIndex
-			}
-			return rpcLogs[i].BlockNumber < rpcLogs[j].BlockNumber
-		})
-
-		// Now renumber per block so logIndex is 0..N-1 with no gaps.
-		currentBlock := rpcLogs[0].BlockHash
-		var idx uint
-		idx = 0
-		for _, l := range rpcLogs {
-			if l.BlockHash != currentBlock {
-				currentBlock = l.BlockHash
-				idx = 0
-			}
-			l.Index = idx
-			idx++
-		}
-	}
-
 	return rpcLogs, nil
 }
 
@@ -275,6 +247,7 @@ func (api *BaseAPI) getLogsV3(ctx context.Context, tx kv.TemporalTx, begin, end 
 		return nil, err
 	}
 
+	//var blockHash common.Hash
 	var header *types.Header
 
 	txNumbers, err := applyFiltersV3(api._txNumReader, tx, begin, end, crit, order.Asc)
@@ -585,26 +558,16 @@ func (api *APIImpl) GetBlockReceipts(ctx context.Context, numberOrHash rpc.Block
 	numTxs := len(block.Transactions())
 	result := make([]map[string]interface{}, 0, numReceipts)
 
-	// track if we already have a state-sync receipt coming from the generator
-	hasBorStateSyncReceipt := false
-
 	for _, receipt := range receipts {
 		// State-sync receipts' TransactionIndex is equal to numTxs.
 		if int(receipt.TransactionIndex) == numTxs {
 			// This is a state-sync transaction receipt.
-			hasBorStateSyncReceipt = true
 			result = append(result, ethutils.MarshalReceipt(receipt, bortypes.NewBorTransaction(), chainConfig, block.HeaderNoCopy(), receipt.TxHash, false, true))
 		} else {
 			// This is a normal transaction receipt.
 			txn := block.Transactions()[receipt.TransactionIndex]
 			result = append(result, ethutils.MarshalReceipt(receipt, txn, chainConfig, block.HeaderNoCopy(), txn.Hash(), true, true))
 		}
-	}
-
-	// if we've already included the state-sync
-	// receipt from the receipts generator, don't generate and append another one.
-	if chainConfig.Bor != nil && hasBorStateSyncReceipt {
-		return result, nil
 	}
 
 	var borTx types.Transaction = bortypes.NewBorTransaction()
@@ -630,18 +593,4 @@ func (api *APIImpl) GetBlockReceipts(ctx context.Context, numberOrHash rpc.Block
 	}
 
 	return result, nil
-}
-
-// isWholeBlockUnfiltered returns true if the filter is to get all logs for a specific block hash.
-func isWholeBlockUnfiltered(crit filters.FilterCriteria) bool {
-	if crit.BlockHash == nil {
-		return false
-	}
-	if len(crit.Addresses) > 0 {
-		return false
-	}
-	if len(crit.Topics) > 0 {
-		return false
-	}
-	return true
 }

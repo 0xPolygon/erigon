@@ -319,13 +319,9 @@ func (g *Generator) GetReceipts(ctx context.Context, cfg *chain.Config, tx kv.Te
 		if err != nil {
 			return nil, err
 		}
-		// Only trust cache if it has the full expected receipts count (to avoid any silent truncation)
-		if len(receiptsFromDB) > 0 && !dbg.AssertEnabled && len(receiptsFromDB) == txCount {
+		if len(receiptsFromDB) > 0 && !dbg.AssertEnabled {
 			g.addToCacheReceipts(block.HeaderNoCopy(), receiptsFromDB)
 			return receiptsFromDB, nil
-		} else {
-			log.Warn("Receipts cache length mismatch, regenerating...",
-				"block", block.NumberU64(), "cached", len(receiptsFromDB), "expected", txCount)
 		}
 	}
 

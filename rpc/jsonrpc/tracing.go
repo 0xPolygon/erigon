@@ -112,9 +112,7 @@ func (api *DebugAPIImpl) traceBlock(ctx context.Context, blockNrOrHash rpc.Block
 
 	var borStateSyncTxn types.Transaction
 
-	// Pre-Madhugiri the state sync txs are "synthetic", so we optionally append tracer-only txs.
-	// Post-Madhugiri the state-sync is a "real" tx, so we don't append the synthetic ones.
-	if *config.BorTraceEnabled && chainConfig.Bor != nil && !chainConfig.Bor.IsMadhugiri(block.NumberU64()) {
+	if *config.BorTraceEnabled {
 		borStateSyncTxHash := bortypes.ComputeBorTxHash(block.NumberU64(), block.Hash())
 
 		_, ok, err := api.bridgeReader.EventTxnLookup(ctx, borStateSyncTxHash)
@@ -130,18 +128,10 @@ func (api *DebugAPIImpl) traceBlock(ctx context.Context, blockNrOrHash rpc.Block
 
 	var gasUsed uint64
 	for txnIndex, txn := range txns {
-		// Synthetic bor state-sync tx (pre-Madhugiri) or real bor state-sync tx (post-Madhugiri)
-		isSyntheticTxBorStateSync := borStateSyncTxn == txn
-		isRealTxBorStateSync := txn != nil && txn.Type() == types.StateSyncTxType
-		isBorStateSyncTxn := isSyntheticTxBorStateSync || isRealTxBorStateSync
+		isBorStateSyncTxn := borStateSyncTxn == txn
 		var txnHash common.Hash
 		if isBorStateSyncTxn {
-			if isSyntheticTxBorStateSync {
-				txnHash = bortypes.ComputeBorTxHash(block.NumberU64(), block.Hash())
-			} else {
-				// real state-sync tx has a real hash
-				txnHash = txn.Hash()
-			}
+			txnHash = bortypes.ComputeBorTxHash(block.NumberU64(), block.Hash())
 		} else {
 			txnHash = txn.Hash()
 		}
@@ -157,6 +147,14 @@ func (api *DebugAPIImpl) traceBlock(ctx context.Context, blockNrOrHash rpc.Block
 			return ctx.Err()
 		}
 		ibs.SetTxContext(blockCtx.BlockNumber, txnIndex)
+		msg, _ := txn.AsMessage(*signer, block.BaseFee(), rules)
+
+		txCtx := evmtypes.TxContext{
+			TxHash:     txnHash,
+			Origin:     msg.From(),
+			GasPrice:   msg.GasPrice(),
+			BlobHashes: msg.BlobHashes(),
+		}
 
 		if isBorStateSyncTxn {
 			var stateSyncEvents []*types.Message
@@ -166,7 +164,6 @@ func (api *DebugAPIImpl) traceBlock(ctx context.Context, blockNrOrHash rpc.Block
 			}
 
 			var _gasUsed uint64
-			//nolint:ineffassign // err is checked below
 			_gasUsed, err = polygontracer.TraceBorStateSyncTxnDebugAPI(
 				ctx,
 				chainConfig,
@@ -183,13 +180,7 @@ func (api *DebugAPIImpl) traceBlock(ctx context.Context, blockNrOrHash rpc.Block
 			)
 			gasUsed += _gasUsed
 		} else {
-			// compute the message and txCtx to run transaction tracer only for "normal" txs and not synthetic state syncs
-			msg, txCtx, err := transactions.ComputeTxContext(ibs, engine, rules, signer, block, chainConfig, txnIndex)
-			if err != nil {
-				return err
-			}
 			var _gasUsed uint64
-			//nolint:ineffassign // err is checked below
 			_gasUsed, err = transactions.TraceTx(ctx, engine, txn, msg, blockCtx, txCtx, block.Hash(), txnIndex, ibs, config, chainConfig, stream, api.evmCallTimeout)
 			gasUsed += _gasUsed
 		}

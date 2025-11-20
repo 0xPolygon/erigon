@@ -342,7 +342,18 @@ func (bbd *BackwardBlockDownloader) downloadHeaderChainBackwards(
 			}
 			chainLen++
 			lastHeader = header
-			h, err := headerReader.HeaderByHash(ctx, header.ParentHash)
+
+			// First check if the header itself exists locally - if it does, it's the connection point.
+			h, err := headerReader.HeaderByHash(ctx, header.Hash())
+			if err != nil {
+				return nil, err
+			}
+			if h != nil {
+				connectionPoint = header
+				break
+			}
+
+			h, err = headerReader.HeaderByHash(ctx, header.ParentHash)
 			if err != nil {
 				return nil, err
 			}

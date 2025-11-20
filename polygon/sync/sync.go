@@ -284,7 +284,14 @@ func (s *Sync) applyNewMilestoneOnTip(ctx context.Context, event EventNewMilesto
 		return s.handleMilestoneTipMismatch(ctx, ccb, milestone)
 	}
 
-	return ccb.PruneRoot(milestone.EndBlock().Uint64())
+	// Prune to (endBlock - 1) to keep one more block in CCB for backward downloads.
+	// This makes pruning less aggressive and helps backward downloads find connection points.
+	endBlock := milestone.EndBlock().Uint64()
+	pruneTo := endBlock
+	if endBlock > 0 {
+		pruneTo = endBlock - 1
+	}
+	return ccb.PruneRoot(pruneTo)
 }
 
 func (s *Sync) applyNewBlockChainOnTip(ctx context.Context, blockChain []*types.Block, ccb *CanonicalChainBuilder, source EventSource, peerId *p2p.PeerId) error {

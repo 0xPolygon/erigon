@@ -158,6 +158,15 @@ func (api *DebugAPIImpl) traceBlock(ctx context.Context, blockNrOrHash rpc.Block
 		}
 		ibs.SetTxContext(blockCtx.BlockNumber, txnIndex)
 
+		msg, _ := txn.AsMessage(*signer, block.BaseFee(), rules)
+
+		txCtx := evmtypes.TxContext{
+			TxHash:     txnHash,
+			Origin:     msg.From(),
+			GasPrice:   msg.GasPrice(),
+			BlobHashes: msg.BlobHashes(),
+		}
+
 		if isBorStateSyncTxn {
 			var stateSyncEvents []*types.Message
 			stateSyncEvents, err = api.bridgeReader.Events(ctx, block.Hash(), blockNumber)
@@ -183,11 +192,6 @@ func (api *DebugAPIImpl) traceBlock(ctx context.Context, blockNrOrHash rpc.Block
 			)
 			gasUsed += _gasUsed
 		} else {
-			// compute the message and txCtx to run transaction tracer only for "normal" txs and not synthetic state syncs
-			msg, txCtx, err := transactions.ComputeTxContext(ibs, engine, rules, signer, block, chainConfig, txnIndex)
-			if err != nil {
-				return err
-			}
 			var _gasUsed uint64
 			//nolint:ineffassign // err is checked below
 			_gasUsed, err = transactions.TraceTx(ctx, engine, txn, msg, blockCtx, txCtx, block.Hash(), txnIndex, ibs, config, chainConfig, stream, api.evmCallTimeout)

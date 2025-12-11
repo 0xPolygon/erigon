@@ -782,13 +782,11 @@ func (api *TraceAPIImpl) callBlock(
 	for i, txn := range txs {
 		isBorStateSyncTxn := txn == borStateSyncTxn
 		var txnHash common.Hash
-		var msg *types.Message
+		msg := &types.Message{}
 		var err error
 		if isBorStateSyncTxn {
 			txnHash = borStateSyncTxnHash
-			if msg == nil {
-				msg = &types.Message{}
-			}
+			msg = &types.Message{}
 			msg.SetIsFree(true)
 			// we use an empty message for bor state sync txn since it gets handled differently
 		} else {
@@ -897,12 +895,10 @@ func (api *TraceAPIImpl) callTransaction(
 	}
 
 	var txnHash common.Hash
-	var msg *types.Message
+	msg := &types.Message{}
 	if isBorStateSyncTxn {
 		txnHash = borStateSyncTxnHash
-		if msg == nil {
-			msg = &types.Message{}
-		}
+		msg = &types.Message{}
 		msg.SetIsFree(true)
 		// we use an empty message for bor state sync txn since it gets handled differently
 	} else {

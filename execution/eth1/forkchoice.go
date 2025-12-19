@@ -46,6 +46,9 @@ import (
 
 const startPruneFrom = 1024
 
+// Track prune mode for logging only on transitions
+var lastPruneModeAggressive bool
+
 type forkchoiceOutcome struct {
 	receipt *executionproto.ForkChoiceReceipt
 	err     error
@@ -446,10 +449,48 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, original
 		}
 	}
 	// Run the forkchoice
+	// initialCycle enables aggressive prune rate (10K blocks vs 10 blocks per cycle).
+	// Enable if: big jump OR too many blocks in mdbx need retirement/pruning.
 	initialCycle := limitedBigJump
+	initialCycleReason := ""
+	if limitedBigJump {
+		initialCycleReason = "bigJump"
+	}
+
+	// Always calculate blocksInDB for logging
+	chainTip := fcuHeader.Number.Uint64()
+	frozenBlocks := e.blockReader.FrozenBlocks()
+	firstBlockInDB, ok, _ := rawdb.ReadFirstNonGenesisHeaderNumber(tx)
+	var blocksInDB uint64
+	if ok && firstBlockInDB > 0 && chainTip > firstBlockInDB {
+		blocksInDB = chainTip - firstBlockInDB
+	}
+
+	if !initialCycle && blocksInDB > 5_000 {
+		initialCycle = true
+		initialCycleReason = "backlog"
+	}
+
+	// Log only on mode transitions
+	if initialCycle != lastPruneModeAggressive {
+		lastPruneModeAggressive = initialCycle
+		if initialCycle {
+			e.logger.Info("[forkchoice] backlog prune: on",
+				"reason", initialCycleReason,
+				"blocksInDB", blocksInDB,
+				"frozenBlocks", frozenBlocks)
+		} else {
+			e.logger.Info("[forkchoice] backlog prune: off",
+				"blocksInDB", blocksInDB,
+				"frozenBlocks", frozenBlocks)
+		}
+	}
+
 	firstCycle := false
+	loopIter := 0
 	for {
 		hasMore, err := e.executionPipeline.Run(e.db, wrap.NewTxContainer(tx, nil), initialCycle, firstCycle)
+		loopIter++
 		if err != nil {
 			err = fmt.Errorf("updateForkChoice: %w", err)
 			e.logger.Warn("Cannot update chain head", "hash", blockHash, "err", err)
@@ -465,8 +506,10 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, original
 			return
 		}
 		if !hasMore {
+			e.logger.Debug("[forkchoice] execution loop done", "iterations", loopIter)
 			break
 		}
+		e.logger.Debug("[forkchoice] RunPrune in loop", "iteration", loopIter, "initialCycle", initialCycle)
 		err = e.executionPipeline.RunPrune(e.db, tx, initialCycle)
 		if err != nil {
 			err = fmt.Errorf("updateForkChoice: RunPrune after hasMore: %w", err)

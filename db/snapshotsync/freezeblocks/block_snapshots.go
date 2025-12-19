@@ -455,7 +455,7 @@ func (br *BlockRetire) RetireBlocks(ctx context.Context, requestedMinBlockNum ui
 	}
 	includeBor := br.chainConfig.Bor != nil
 
-	if includeBor && time.Now().After(br.borDataNotReadyBefore) {
+	if includeBor && time.Now().Before(br.borDataNotReadyBefore) {
 		return nil
 	}
 

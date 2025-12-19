@@ -38,6 +38,7 @@ import (
 	"github.com/erigontech/erigon/db/kv/prune"
 	"github.com/erigontech/erigon/db/kv/rawdbv3"
 	"github.com/erigontech/erigon/db/kv/temporal"
+	"github.com/erigontech/erigon/db/rawdb"
 	"github.com/erigontech/erigon/db/snapshotsync"
 	"github.com/erigontech/erigon/db/snapshotsync/freezeblocks"
 	"github.com/erigontech/erigon/db/snaptype"
@@ -53,6 +54,10 @@ import (
 	"github.com/erigontech/erigon/turbo/shards"
 	"github.com/erigontech/erigon/turbo/silkworm"
 )
+
+// Track mode for logging only on transitions
+var lastRetireMode string
+var lastPruneMode string
 
 type SnapshotsCfg struct {
 	db          kv.TemporalRwDB
@@ -393,10 +398,42 @@ func SnapshotsPrune(s *PruneState, cfg SnapshotsCfg, ctx context.Context, tx kv.
 
 		var minBlockNumber uint64
 
+		// Calculate blocksInDB to detect backlog needing aggressive retirement
+		var blocksInDB uint64
+		chainTip, err := stages.GetStageProgress(tx, stages.Execution)
+		if err == nil && chainTip > 0 {
+			firstBlockInDB, ok, _ := rawdb.ReadFirstNonGenesisHeaderNumber(tx)
+			if ok && firstBlockInDB > 0 && chainTip > firstBlockInDB {
+				blocksInDB = chainTip - firstBlockInDB
+			}
+		}
+		frozenBlocks := cfg.blockReader.FrozenBlocks()
+
+		// Use aggressive workers when backlog exists, not just during initial sync
+		retireWorkers := 1
+		retireMode := "normal"
 		if s.CurrentSyncCycle.IsInitialCycle {
-			cfg.blockRetire.SetWorkers(estimate.CompressSnapshot.Workers())
-		} else {
-			cfg.blockRetire.SetWorkers(1)
+			retireWorkers = estimate.CompressSnapshot.Workers()
+			retireMode = "initialCycle"
+		} else if blocksInDB > 5_000 {
+			retireWorkers = estimate.CompressSnapshot.Workers()
+			retireMode = "backlog"
+		}
+		cfg.blockRetire.SetWorkers(retireWorkers)
+
+		// Log only on mode transitions
+		if retireMode != lastRetireMode {
+			lastRetireMode = retireMode
+			if retireMode == "backlog" {
+				logger.Info("[OtterSync] retire backlog: on",
+					"workers", retireWorkers,
+					"blocksInDB", blocksInDB,
+					"frozenBlocks", frozenBlocks)
+			} else if retireMode == "normal" {
+				logger.Info("[OtterSync] retire backlog: off",
+					"blocksInDB", blocksInDB,
+					"frozenBlocks", frozenBlocks)
+			}
 		}
 
 		noDl := cfg.snapshotDownloader == nil || reflect.ValueOf(cfg.snapshotDownloader).IsNil()
@@ -438,10 +475,44 @@ func SnapshotsPrune(s *PruneState, cfg SnapshotsCfg, ctx context.Context, tx kv.
 
 	pruneLimit := 10
 	pruneTimeout := 125 * time.Millisecond
+	pruneMode := "normal"
+	var pruneBlocksInDB uint64
+
 	if s.CurrentSyncCycle.IsInitialCycle {
 		pruneLimit = 10_000
 		pruneTimeout = time.Hour
+		pruneMode = "initialCycle"
+	} else {
+		// Check for backlog even when not initial cycle
+		chainTip, _ := stages.GetStageProgress(tx, stages.Execution)
+		firstBlockInDB, ok, _ := rawdb.ReadFirstNonGenesisHeaderNumber(tx)
+		if ok && firstBlockInDB > 0 && chainTip > firstBlockInDB {
+			pruneBlocksInDB = chainTip - firstBlockInDB
+			if pruneBlocksInDB > 5_000 {
+				pruneLimit = 10_000
+				pruneTimeout = time.Hour
+				pruneMode = "aggressive"
+			} else if pruneBlocksInDB > 2_500 {
+				pruneLimit = 1_000
+				pruneTimeout = 10 * time.Minute
+				pruneMode = "medium"
+			}
+		}
 	}
+
+	// Log only on mode transitions
+	if pruneMode != lastPruneMode {
+		prevMode := lastPruneMode
+		lastPruneMode = pruneMode
+		if pruneMode == "aggressive" {
+			logger.Info("[OtterSync] prune backlog: aggressive", "limit", pruneLimit, "blocksInDB", pruneBlocksInDB)
+		} else if pruneMode == "medium" {
+			logger.Info("[OtterSync] prune backlog: medium", "limit", pruneLimit, "blocksInDB", pruneBlocksInDB)
+		} else if pruneMode == "normal" && (prevMode == "aggressive" || prevMode == "medium") {
+			logger.Info("[OtterSync] prune backlog: off", "blocksInDB", pruneBlocksInDB)
+		}
+	}
+
 	if _, err := cfg.blockRetire.PruneAncientBlocks(tx, pruneLimit, pruneTimeout); err != nil {
 		return err
 	}

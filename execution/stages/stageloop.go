@@ -111,8 +111,44 @@ func StageLoop(
 			time.Sleep(500 * time.Millisecond) // just to avoid too many similar error logs
 			continue
 		}
+		// Only exit initial cycle if cycle completed quickly AND no prune backlog exists.
+		// Prune backlog = blocks in chaindata that are already frozen in snapshots.
+		// Keeping initialCycle=true ensures aggressive prune rate (10K blocks vs 10 blocks per cycle).
 		if time.Since(t) < 5*time.Minute {
-			initialCycle = false
+			frozenBlocks := blockReader.FrozenBlocks()
+			var firstBlockInDB uint64
+			if err := db.View(ctx, func(tx kv.Tx) error {
+				first, ok, err := rawdb.ReadFirstNonGenesisHeaderNumber(tx)
+				if err != nil {
+					return err
+				}
+				if ok {
+					firstBlockInDB = first
+				}
+				return nil
+			}); err != nil {
+				logger.Warn("[stageloop] Failed to check prune backlog", "err", err)
+			}
+
+			// Only exit initialCycle if prune has caught up to frozen blocks
+			if firstBlockInDB == 0 {
+				// Can't determine first block, assume no backlog
+				initialCycle = false
+				logger.Info("[stageloop] initialCycle=false: cannot determine firstBlockInDB",
+					"frozenBlocks", frozenBlocks)
+			} else if firstBlockInDB >= frozenBlocks {
+				// Prune has caught up, no backlog
+				initialCycle = false
+				logger.Info("[stageloop] initialCycle=false: prune caught up",
+					"firstBlockInDB", firstBlockInDB,
+					"frozenBlocks", frozenBlocks)
+			} else {
+				// firstBlockInDB < frozenBlocks: prune backlog exists, stay in initialCycle
+				logger.Info("[stageloop] initialCycle=true: prune backlog detected",
+					"firstBlockInDB", firstBlockInDB,
+					"frozenBlocks", frozenBlocks,
+					"backlog", frozenBlocks-firstBlockInDB)
+			}
 		}
 		if !initialCycle {
 			hd.AfterInitialCycle()

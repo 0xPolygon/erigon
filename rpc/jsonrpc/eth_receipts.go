@@ -576,34 +576,30 @@ func (api *APIImpl) GetBlockReceipts(ctx context.Context, numberOrHash rpc.Block
 	if err != nil {
 		return nil, err
 	}
+
+	// Get normal transaction receipts.
+	// This DOES NOT generate state-sync transaction receipt for bor.
 	receipts, err := api.getReceipts(ctx, tx, block)
 	if err != nil {
 		return nil, fmt.Errorf("getReceipts error: %w", err)
 	}
 
 	numReceipts := len(receipts)
-	numTxs := len(block.Transactions())
 	result := make([]map[string]interface{}, 0, numReceipts)
 
-	// track if we already have a state-sync receipt coming from the generator
-	hasBorStateSyncReceipt := false
-
+	// Marshal normal transaction receipts and append to result
 	for _, receipt := range receipts {
-		// State-sync receipts' TransactionIndex is equal to numTxs.
-		if int(receipt.TransactionIndex) == numTxs {
-			// This is a state-sync transaction receipt.
-			hasBorStateSyncReceipt = true
-			result = append(result, ethutils.MarshalReceipt(receipt, bortypes.NewBorTransaction(), chainConfig, block.HeaderNoCopy(), receipt.TxHash, false, true))
-		} else {
-			// This is a normal transaction receipt.
-			txn := block.Transactions()[receipt.TransactionIndex]
-			result = append(result, ethutils.MarshalReceipt(receipt, txn, chainConfig, block.HeaderNoCopy(), txn.Hash(), true, true))
-		}
+		txn := block.Transactions()[receipt.TransactionIndex]
+		result = append(result, ethutils.MarshalReceipt(receipt, txn, chainConfig, block.HeaderNoCopy(), txn.Hash(), true, true))
 	}
 
-	// if we've already included the state-sync
-	// receipt from the receipts generator, don't generate and append another one.
-	if chainConfig.Bor != nil && hasBorStateSyncReceipt {
+	// check for state sync event logs and generate state-sync transaction receipt for bor.
+	events, err := api.bridgeReader.Events(ctx, block.Hash(), blockNum)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(events) == 0 {
 		return result, nil
 	}
 
@@ -615,19 +611,12 @@ func (api *APIImpl) GetBlockReceipts(ctx context.Context, numberOrHash rpc.Block
 		}
 	}
 
-	events, err := api.bridgeReader.Events(ctx, block.Hash(), blockNum)
+	borReceipt, err := api.borReceiptGenerator.GenerateBorReceipt(ctx, tx, block, events, chainConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(events) != 0 {
-		borReceipt, err := api.borReceiptGenerator.GenerateBorReceipt(ctx, tx, block, events, chainConfig)
-		if err != nil {
-			return nil, err
-		}
-
-		result = append(result, ethutils.MarshalReceipt(borReceipt, borTx, chainConfig, block.HeaderNoCopy(), borReceipt.TxHash, false, true))
-	}
+	result = append(result, ethutils.MarshalReceipt(borReceipt, borTx, chainConfig, block.HeaderNoCopy(), borReceipt.TxHash, false, true))
 
 	return result, nil
 }

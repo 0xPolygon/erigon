@@ -18,6 +18,7 @@ package stagedsync
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -231,6 +232,9 @@ func unwindExec3(u *UnwindState, s *StageState, txc wrap.TxContainer, ctx contex
 
 var mxState3Unwind = metrics.GetOrCreateSummary("state3_unwind")
 
+// Track ChangeSets3 prune mode for logging only on transitions
+var lastChangeSetsPruneMode string
+
 func unwindExec3State(ctx context.Context, tx kv.TemporalRwTx, sd *state.SharedDomains,
 	blockUnwindTo, txUnwindTo uint64,
 	accumulator *shards.Accumulator,
@@ -443,10 +447,52 @@ func PruneExecutionStage(s *PruneState, tx kv.RwTx, cfg ExecuteBlockCfg, ctx con
 		// Some blocks on bor-mainnet have 400 chunks of diff = 3mb
 		var pruneDiffsLimitOnChainTip = 1_000
 		pruneTimeout := quickPruneTimeout
+		changeSetsPruneMode := "normal"
+
 		if s.CurrentSyncCycle.IsInitialCycle {
 			pruneDiffsLimitOnChainTip = math.MaxInt
-			pruneTimeout = time.Hour
+			pruneTimeout = 5 * time.Minute
+			changeSetsPruneMode = "initialCycle"
+		} else {
+			// Check for ChangeSets3 backlog - enable aggressive prune if behind
+			pruneTo := s.ForwardProgress - cfg.syncCfg.MaxReorgDepth
+			if c, err := tx.Cursor(kv.ChangeSets3); err == nil {
+				k, _, _ := c.First()
+				c.Close()
+				if k != nil {
+					minBlock := binary.BigEndian.Uint64(k)
+					if minBlock < pruneTo {
+						backlog := pruneTo - minBlock
+						if backlog > 1_000_000 { // >1M blocks behind
+							pruneDiffsLimitOnChainTip = math.MaxInt
+							pruneTimeout = 5 * time.Minute
+							changeSetsPruneMode = "aggressive"
+						} else if backlog > 100_000 { // >100K blocks behind
+							pruneDiffsLimitOnChainTip = 100_000
+							pruneTimeout = 5 * time.Minute
+							changeSetsPruneMode = "medium"
+						}
+					}
+				}
+			}
 		}
+
+		// Log ChangeSets3 prune mode transitions
+		if changeSetsPruneMode != lastChangeSetsPruneMode {
+			prevMode := lastChangeSetsPruneMode
+			lastChangeSetsPruneMode = changeSetsPruneMode
+			switch changeSetsPruneMode {
+			case "aggressive":
+				logger.Info("[OtterSync] ChangeSets3 prune backlog: aggressive", "timeout", pruneTimeout)
+			case "medium":
+				logger.Info("[OtterSync] ChangeSets3 prune backlog: medium", "timeout", pruneTimeout)
+			case "normal":
+				if prevMode == "aggressive" || prevMode == "medium" {
+					logger.Info("[OtterSync] ChangeSets3 prune backlog: off")
+				}
+			}
+		}
+
 		pruneChangeSetsStartTime := time.Now()
 		if err := rawdb.PruneTable(
 			tx,
@@ -461,7 +507,7 @@ func PruneExecutionStage(s *PruneState, tx kv.RwTx, cfg ExecuteBlockCfg, ctx con
 			return err
 		}
 		if duration := time.Since(pruneChangeSetsStartTime); duration > quickPruneTimeout {
-			logger.Debug(
+			logger.Info(
 				fmt.Sprintf("[%s] prune changesets timing", s.LogPrefix()),
 				"duration", duration,
 				"initialCycle", s.CurrentSyncCycle.IsInitialCycle,
@@ -474,7 +520,7 @@ func PruneExecutionStage(s *PruneState, tx kv.RwTx, cfg ExecuteBlockCfg, ctx con
 
 	pruneTimeout := quickPruneTimeout
 	if s.CurrentSyncCycle.IsInitialCycle {
-		pruneTimeout = 12 * time.Hour
+		pruneTimeout = 5 * time.Minute
 
 		// allow greedy prune on non-chain-tip
 		greedyPruneCommitmentHistoryStartTime := time.Now()
@@ -482,7 +528,7 @@ func PruneExecutionStage(s *PruneState, tx kv.RwTx, cfg ExecuteBlockCfg, ctx con
 			return err
 		}
 		if duration := time.Since(greedyPruneCommitmentHistoryStartTime); duration > quickPruneTimeout {
-			logger.Debug(
+			logger.Info(
 				fmt.Sprintf("[%s] greedy prune commitment history timing", s.LogPrefix()),
 				"duration", duration,
 				"initialCycle", s.CurrentSyncCycle.IsInitialCycle,
@@ -496,7 +542,7 @@ func PruneExecutionStage(s *PruneState, tx kv.RwTx, cfg ExecuteBlockCfg, ctx con
 		return err
 	}
 	if duration := time.Since(pruneSmallBatchesStartTime); duration > quickPruneTimeout {
-		logger.Debug(
+		logger.Info(
 			fmt.Sprintf("[%s] prune small batches timing", s.LogPrefix()),
 			"duration", duration,
 			"initialCycle", s.CurrentSyncCycle.IsInitialCycle,

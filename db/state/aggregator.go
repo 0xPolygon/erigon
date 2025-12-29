@@ -48,6 +48,7 @@ import (
 	"github.com/erigontech/erigon/db/kv"
 	"github.com/erigontech/erigon/db/kv/bitmapdb"
 	"github.com/erigontech/erigon/db/kv/order"
+	"github.com/erigontech/erigon/db/kv/rawdbv3"
 	"github.com/erigontech/erigon/db/kv/stream"
 	"github.com/erigontech/erigon/db/state/statecfg"
 	"github.com/erigontech/erigon/db/version"
@@ -62,6 +63,7 @@ type Aggregator struct {
 	dirs     datadir.Dirs
 	stepSize uint64
 
+	reorgBlockDepth          uint64
 	dirtyFilesLock           sync.Mutex
 	visibleFilesLock         sync.RWMutex
 	visibleFilesMinimaxTxNum atomic.Uint64
@@ -95,7 +97,7 @@ type Aggregator struct {
 	checker *DependencyIntegrityChecker
 }
 
-func newAggregator(ctx context.Context, dirs datadir.Dirs, stepSize uint64, db kv.RoDB, logger log.Logger) (*Aggregator, error) {
+func newAggregator(ctx context.Context, dirs datadir.Dirs, stepSize, reorgBlockDepth uint64, db kv.RoDB, logger log.Logger) (*Aggregator, error) {
 	ctx, ctxCancel := context.WithCancel(ctx)
 	return &Aggregator{
 		ctx:                    ctx,
@@ -104,6 +106,7 @@ func newAggregator(ctx context.Context, dirs datadir.Dirs, stepSize uint64, db k
 		onFilesDelete:          func(frozenFileNames []string) {},
 		dirs:                   dirs,
 		stepSize:               stepSize,
+		reorgBlockDepth:        reorgBlockDepth,
 		db:                     db,
 		leakDetector:           dbg.NewLeakDetector("agg", dbg.SlowTx()),
 		ps:                     background.NewProgressSet(),
@@ -619,7 +622,17 @@ func (sf AggV3StaticFiles) CleanupOnError() {
 	}
 }
 
+var errStepNotReady = errors.New("step not ready")
+
 func (a *Aggregator) buildFiles(ctx context.Context, step kv.Step) error {
+	lastBlockInStep, lastBlockInDB, lastTxInDB, ok, err := a.readyForCollation(ctx, step)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		a.logger.Debug("[agg] step not ready for collation", "step", step, "lastTxInStep", lastTxNumOfStep(step, a.StepSize()), "lastBlockInStep", lastBlockInStep, "lastTxInDB", lastTxInDB, "lastBlockInDB", lastBlockInDB)
+		return errStepNotReady
+	}
 	a.logger.Debug("[agg] collate and build", "step", step, "collate_workers", a.collateAndBuildWorkers, "merge_workers", a.mergeWorkers, "compress_workers", a.d[kv.AccountsDomain].CompressCfg.Workers)
 
 	var (
@@ -738,6 +751,25 @@ func (a *Aggregator) buildFiles(ctx context.Context, step kv.Step) error {
 	return nil
 }
 
+func (a *Aggregator) readyForCollation(ctx context.Context, step kv.Step) (lastBlockInStep, lastBlockInDB, lastTxInDB uint64, ok bool, err error) {
+	if a.reorgBlockDepth == 0 {
+		return 0, 0, 0, true, nil
+	}
+	err = a.db.View(ctx, func(tx kv.Tx) error {
+		lastBlockInStep, ok, err = rawdbv3.TxNums.FindBlockNum(tx, lastTxNumOfStep(step, a.stepSize))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			lastBlockInStep = 0
+		}
+		lastTxInDB, lastBlockInDB, err = rawdbv3.TxNums.Last(tx)
+		return err
+	})
+	ok = err == nil && lastBlockInDB > lastBlockInStep+a.reorgBlockDepth
+	return
+}
+
 func (a *Aggregator) BuildFiles(toTxNum uint64) (err error) {
 	finished := a.BuildFilesInBackground(toTxNum)
 	if !(a.buildingFiles.Load() || a.mergingFiles.Load()) {
@@ -780,6 +812,9 @@ func (a *Aggregator) BuildFiles2(ctx context.Context, fromStep, toStep kv.Step) 
 		}
 		for step := fromStep; step < toStep; step++ { //`step` must be fully-written - means `step+1` records must be visible
 			if err := a.buildFiles(ctx, step); err != nil {
+				if errors.Is(err, errStepNotReady) {
+					break
+				}
 				if errors.Is(err, context.Canceled) || errors.Is(err, common.ErrStopped) {
 					panic(err)
 				}
@@ -915,12 +950,12 @@ type flusher interface {
 	Flush(ctx context.Context, tx kv.RwTx) error
 }
 
-func (at *AggregatorRoTx) StepsInFiles(entitySet ...kv.Domain) uint64 {
+func (at *AggregatorRoTx) StepsInFiles(entitySet ...kv.Domain) kv.Step {
 	txNumInFiles := at.TxNumsInFiles(entitySet...)
 	if txNumInFiles > 0 {
 		txNumInFiles--
 	}
-	return txNumInFiles / at.StepSize()
+	return kv.Step(txNumInFiles / at.StepSize())
 }
 
 func (at *AggregatorRoTx) TxNumsInFiles(entitySet ...kv.Domain) (minTxNum uint64) {
@@ -952,6 +987,47 @@ func (at *AggregatorRoTx) CanPrune(tx kv.Tx, untilTx uint64) bool {
 		}
 	}
 	return false
+}
+
+// IIBacklogInfo returns the maximum backlog across inverted indexes and diagnostic info.
+// Backlog = txNums in MDBX that should be pruned (below files.EndTxNum).
+// Also returns list of IIs with visibility issues (EndTxNum = 0).
+func (at *AggregatorRoTx) IIBacklogInfo(tx kv.Tx) (maxBacklog uint64, blockedIIs []string) {
+	for _, ii := range at.iis {
+		endTxNum := ii.files.EndTxNum()
+		if endTxNum == 0 {
+			// No visible files - can't prune this II
+			blockedIIs = append(blockedIIs, ii.ii.FilenameBase)
+			continue
+		}
+		minTxNum := ii.ii.minTxNumInDB(tx)
+		if minTxNum < endTxNum {
+			backlog := endTxNum - minTxNum
+			if backlog > maxBacklog {
+				maxBacklog = backlog
+			}
+		}
+	}
+	return maxBacklog, blockedIIs
+}
+
+// CommitmentBacklogInfo returns the backlog for CommitmentDomain history pruning.
+// Backlog = txNums in MDBX that could be pruned (history entries below files.EndTxNum).
+// Returns 0 if no pruning is possible or history is disabled.
+func (at *AggregatorRoTx) CommitmentBacklogInfo(tx kv.Tx) uint64 {
+	cd := at.d[kv.CommitmentDomain]
+	if cd.ht.h.HistoryDisabled {
+		return 0
+	}
+	canHist, txTo := cd.ht.canPruneUntil(tx, math.MaxUint64)
+	if !canHist || txTo == 0 {
+		return 0
+	}
+	minTxNum := cd.ht.iit.ii.minTxNumInDB(tx)
+	if minTxNum >= txTo {
+		return 0
+	}
+	return txTo - minTxNum
 }
 
 // PruneSmallBatches is not cancellable, it's over when it's over or failed.
@@ -1614,6 +1690,9 @@ func (a *Aggregator) BuildFilesInBackground(txNum uint64) chan struct{} {
 		// - during files build, may happen commit of new data. on each loop step getting latest id in db
 		for ; step < lastInDB; step++ { //`step` must be fully-written - means `step+1` records must be visible
 			if err := a.buildFiles(a.ctx, step); err != nil {
+				if errors.Is(err, errStepNotReady) {
+					break
+				}
 				if errors.Is(err, context.Canceled) || errors.Is(err, common.ErrStopped) {
 					close(fin)
 					return

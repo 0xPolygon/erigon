@@ -66,8 +66,11 @@ var (
 	mxMgas = metrics.NewGauge(`exec_mgas`)
 )
 
+// Track prune modes for logging only on transitions
+var lastIIPruneMode string
+var lastCommitmentPruneMode string
+
 const (
-	changesetSafeRange     = 32   // Safety net for long-sync, keep last 32 changesets
 	maxUnwindJumpAllowance = 1000 // Maximum number of blocks we are allowed to unwind
 )
 
@@ -294,17 +297,14 @@ func ExecV3(ctx context.Context,
 		return nil
 	}
 
-	shouldGenerateChangesets := maxBlockNum-blockNum <= changesetSafeRange || cfg.syncCfg.AlwaysGenerateChangesets
-	if blockNum < cfg.blockReader.FrozenBlocks() {
-		shouldGenerateChangesets = false
-	}
-
 	if maxBlockNum > blockNum+16 {
 		log.Info(fmt.Sprintf("[%s] starting", execStage.LogPrefix()),
 			"from", blockNum, "to", maxBlockNum, "fromTxNum", doms.TxNum(), "offsetFromBlockBeginning", offsetFromBlockBeginning, "initialCycle", initialCycle, "useExternalTx", useExternalTx, "inMem", inMemExec)
 	}
 
-	agg.BuildFilesInBackground(outputTxNum.Load())
+	if execStage.SyncMode() == stages.ModeApplyingBlocks {
+		agg.BuildFilesInBackground(outputTxNum.Load())
+	}
 
 	var count uint64
 
@@ -372,24 +372,26 @@ func ExecV3(ctx context.Context,
 				accumulator:    accumulator,
 				isMining:       isMining,
 				inMemExec:      inMemExec,
+				initialCycle:   initialCycle,
 				applyTx:        applyTx,
 				applyWorker:    applyWorker,
+				inputBlockNum:  inputBlockNum,
+				maxBlockNum:    maxBlockNum,
 				outputTxNum:    &outputTxNum,
 				outputBlockNum: stages.SyncMetrics[stages.Execution],
 				logger:         logger,
 			},
-			shouldGenerateChangesets: shouldGenerateChangesets,
-			workerCount:              workerCount,
-			pruneEvery:               pruneEvery,
-			logEvery:                 logEvery,
-			progress:                 progress,
+			workerCount: workerCount,
+			pruneEvery:  pruneEvery,
+			logEvery:    logEvery,
+			progress:    progress,
 		}
 
 		executorCancel := pe.run(ctx, maxTxNum, logger)
 		defer executorCancel()
 
 		defer func() {
-			progress.Log("Done", executor.readState(), nil, pe.rws, 0 /*txCount - TODO*/, logGas, inputBlockNum.Load(), outputBlockNum.GetValueUint64(), outputTxNum.Load(), mxExecRepeats.GetValueUint64(), stepsInDB, shouldGenerateChangesets, inMemExec)
+			progress.Log("Done", executor.readState(), nil, pe.rws, 0 /*txCount - TODO*/, logGas, inputBlockNum.Load(), outputBlockNum.GetValueUint64(), outputTxNum.Load(), mxExecRepeats.GetValueUint64(), stepsInDB, pe.shouldGenerateChangeSets(), inMemExec)
 		}()
 
 		executor = pe
@@ -406,8 +408,11 @@ func ExecV3(ctx context.Context,
 				u:              u,
 				isMining:       isMining,
 				inMemExec:      inMemExec,
+				initialCycle:   initialCycle,
 				applyTx:        applyTx,
 				applyWorker:    applyWorker,
+				inputBlockNum:  inputBlockNum,
+				maxBlockNum:    maxBlockNum,
 				outputTxNum:    &outputTxNum,
 				outputBlockNum: stages.SyncMetrics[stages.Execution],
 				logger:         logger,
@@ -415,7 +420,7 @@ func ExecV3(ctx context.Context,
 		}
 
 		defer func() {
-			progress.Log("Done", executor.readState(), nil, nil, se.txCount, logGas, inputBlockNum.Load(), outputBlockNum.GetValueUint64(), outputTxNum.Load(), mxExecRepeats.GetValueUint64(), stepsInDB, shouldGenerateChangesets || cfg.syncCfg.KeepExecutionProofs, inMemExec)
+			progress.Log("Done", executor.readState(), nil, nil, se.txCount, logGas, inputBlockNum.Load(), outputBlockNum.GetValueUint64(), outputTxNum.Load(), mxExecRepeats.GetValueUint64(), stepsInDB, se.shouldGenerateChangeSets() || cfg.syncCfg.KeepExecutionProofs, inMemExec)
 		}()
 
 		executor = se
@@ -436,7 +441,9 @@ func ExecV3(ctx context.Context,
 			"from", blockNum, "to", maxBlockNum, "fromTxNum", executor.domains().TxNum(), "offsetFromBlockBeginning", offsetFromBlockBeginning, "initialCycle", initialCycle, "useExternalTx", useExternalTx)
 	}
 
-	agg.BuildFilesInBackground(outputTxNum.Load())
+	if execStage.SyncMode() == stages.ModeApplyingBlocks {
+		agg.BuildFilesInBackground(outputTxNum.Load())
+	}
 
 	var readAhead chan uint64
 	if !isMining && !inMemExec && execStage.CurrentSyncCycle.IsInitialCycle {
@@ -450,27 +457,23 @@ func ExecV3(ctx context.Context,
 	}
 
 	var b *types.Block
-
-	// Only needed by bor chains
-	shouldGenerateChangesetsForLastBlocks := cfg.chainConfig.Bor != nil
 	startBlockNum := blockNum
 	blockLimit := uint64(cfg.syncCfg.LoopBlockLimit)
 	var errExhausted *ErrLoopExhausted
 
+	var lastFrozenTxNum uint64
+	var lastFrozenStep kv.Step
+
+	if temporalTx, ok := applyTx.(kv.TemporalTx); ok {
+		lastFrozenStep = temporalTx.StepsInFiles(kv.CommitmentDomain)
+	}
+	if lastFrozenStep > 0 {
+		lastFrozenTxNum = uint64((lastFrozenStep+1)*kv.Step(doms.StepSize())) - 1
+	}
+
 Loop:
 	for ; blockNum <= maxBlockNum; blockNum++ {
-		// set shouldGenerateChangesets=true if we are at last n blocks from maxBlockNum. this is as a safety net in chains
-		// where during initial sync we can expect bogus blocks to be imported.
-		if !shouldGenerateChangesets && shouldGenerateChangesetsForLastBlocks && blockNum > cfg.blockReader.FrozenBlocks() && blockNum+changesetSafeRange >= maxBlockNum {
-			start := time.Now()
-			executor.domains().SetChangesetAccumulator(nil) // Make sure we don't have an active changeset accumulator
-			// First compute and commit the progress done so far
-			if _, err := executor.domains().ComputeCommitment(ctx, true, blockNum, inputTxNum, execStage.LogPrefix()); err != nil {
-				return err
-			}
-			computeCommitmentDuration += time.Since(start)
-			shouldGenerateChangesets = true // now we can generate changesets for the safety net
-		}
+		shouldGenerateChangesets := shouldGenerateChangeSets(cfg, blockNum, maxBlockNum, initialCycle)
 		changeSet := &changeset2.StateChangeSet{}
 		if shouldGenerateChangesets && blockNum > 0 {
 			executor.domains().SetChangesetAccumulator(changeSet)
@@ -570,7 +573,7 @@ Loop:
 				Withdrawals:     b.Withdrawals(),
 
 				// use history reader instead of state reader to catch up to the tx where we left off
-				HistoryExecution: offsetFromBlockBeginning > 0 && txIndex < int(offsetFromBlockBeginning),
+				HistoryExecution: lastFrozenTxNum > 0 && inputTxNum <= lastFrozenTxNum,
 
 				BlockReceipts: blockReceipts,
 
@@ -656,7 +659,9 @@ Loop:
 				return err
 			}
 
-			agg.BuildFilesInBackground(outputTxNum.Load())
+			if execStage.SyncMode() == stages.ModeApplyingBlocks {
+				agg.BuildFilesInBackground(outputTxNum.Load())
+			}
 		} else {
 			se := executor.(*serialExecutor)
 
@@ -763,11 +768,69 @@ Loop:
 
 				// allow greedy prune on non-chain-tip
 				pruneTimeout := 250 * time.Millisecond
+				iiPruneMode := "normal"
 				if initialCycle {
 					pruneTimeout = 10 * time.Hour
+					iiPruneMode = "initialCycle"
 
 					if err = executor.tx().(kv.TemporalRwTx).GreedyPruneHistory(ctx, kv.CommitmentDomain); err != nil {
 						return err
+					}
+				} else {
+					// Check for II backlog - enable aggressive prune if needed
+					iiBacklog, blockedIIs := aggregatorRo.IIBacklogInfo(executor.tx())
+					if len(blockedIIs) > 0 {
+						iiPruneMode = "blocked"
+					} else if iiBacklog > 10_000_000 { // >10M txNums behind (~500 steps)
+						pruneTimeout = 30 * time.Minute
+						iiPruneMode = "aggressive"
+					} else if iiBacklog > 1_000_000 { // >1M txNums behind (~50 steps)
+						pruneTimeout = 10 * time.Minute
+						iiPruneMode = "medium"
+					}
+
+					// Check for CommitmentDomain history backlog - call GreedyPruneHistory if behind
+					commitmentBacklog := aggregatorRo.CommitmentBacklogInfo(executor.tx())
+					commitmentPruneMode := "normal"
+					if commitmentBacklog > 10_000_000 { // >10M txNums behind
+						commitmentPruneMode = "aggressive"
+						if err = executor.tx().(kv.TemporalRwTx).GreedyPruneHistory(ctx, kv.CommitmentDomain); err != nil {
+							return err
+						}
+					}
+
+					// Log commitment prune mode transitions
+					if commitmentPruneMode != lastCommitmentPruneMode {
+						prevMode := lastCommitmentPruneMode
+						lastCommitmentPruneMode = commitmentPruneMode
+						switch commitmentPruneMode {
+						case "aggressive":
+							logger.Info("[OtterSync] Commitment prune backlog: aggressive", "backlog", commitmentBacklog)
+						case "normal":
+							if prevMode == "aggressive" {
+								logger.Info("[OtterSync] Commitment prune backlog: off")
+							}
+						}
+					}
+				}
+
+				// Log only on mode transitions
+				if iiPruneMode != lastIIPruneMode {
+					prevMode := lastIIPruneMode
+					lastIIPruneMode = iiPruneMode
+					switch iiPruneMode {
+					case "blocked":
+						iiBacklog, blockedIIs := aggregatorRo.IIBacklogInfo(executor.tx())
+						logger.Warn("[OtterSync] II prune blocked - no visible files",
+							"blockedIIs", blockedIIs, "backlog", iiBacklog)
+					case "aggressive":
+						logger.Info("[OtterSync] II prune backlog: aggressive", "timeout", pruneTimeout)
+					case "medium":
+						logger.Info("[OtterSync] II prune backlog: medium", "timeout", pruneTimeout)
+					case "normal":
+						if prevMode == "aggressive" || prevMode == "medium" || prevMode == "blocked" {
+							logger.Info("[OtterSync] II prune backlog: off")
+						}
 					}
 				}
 
@@ -800,15 +863,21 @@ Loop:
 			}
 		}
 
-		if blockLimit > 0 && blockNum-startBlockNum+1 >= blockLimit {
-			errExhausted = &ErrLoopExhausted{From: startBlockNum, To: blockNum, Reason: "block limit reached"}
-			break
-		}
-
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
+		}
+
+		lastExecutedStep := kv.Step(inputTxNum / agg.StepSize())
+
+		// if we're in the initialCycle before we consider the blockLimit we need to make sure we keep executing
+		// until we reach a transaction whose comittement which is writable to the db, otherwise the update will get lost
+		if !initialCycle || lastExecutedStep > 0 && lastExecutedStep > lastFrozenStep && !dbg.DiscardCommitment() {
+			if blockLimit > 0 && blockNum-startBlockNum+1 >= blockLimit {
+				errExhausted = &ErrLoopExhausted{From: startBlockNum, To: blockNum, Reason: "block limit reached"}
+				break
+			}
 		}
 	}
 
@@ -836,7 +905,9 @@ Loop:
 		}
 	}
 
-	agg.BuildFilesInBackground(outputTxNum.Load())
+	if execStage.SyncMode() == stages.ModeApplyingBlocks {
+		agg.BuildFilesInBackground(outputTxNum.Load())
+	}
 
 	if errExhausted != nil && blockNum < maxBlockNum {
 		// special err allows the loop to continue, caller will call us again to continue from where we left off
@@ -1010,4 +1081,18 @@ func blockWithSenders(ctx context.Context, db kv.RoDB, tx kv.Tx, blockReader ser
 		return nil, nil
 	}
 	return b, err
+}
+
+func shouldGenerateChangeSets(cfg ExecuteBlockCfg, blockNum, maxBlockNum uint64, initialCycle bool) bool {
+	if cfg.syncCfg.AlwaysGenerateChangesets {
+		return true
+	}
+	if blockNum < cfg.blockReader.FrozenBlocks() {
+		return false
+	}
+	if initialCycle {
+		return false
+	}
+	// once past the initial cycle, make sure to generate changesets for the last blocks that fall in the reorg window
+	return blockNum+cfg.syncCfg.MaxReorgDepth >= maxBlockNum
 }

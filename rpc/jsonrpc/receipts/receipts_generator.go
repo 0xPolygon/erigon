@@ -384,24 +384,6 @@ func (g *Generator) GetReceipts(ctx context.Context, cfg *chain.Config, tx kv.Te
 		}
 	}
 
-	/*
-		// PIP-74: state-sync receipt handling.
-		if g.borGenerator != nil && cfg.Bor != nil {
-			// Extract state-sync events from block.
-			events, err := g.extractBorEvents(ctx, block)
-			if err != nil {
-				return nil, fmt.Errorf("ReceiptGen.GetReceipts: failed to extract bor events for block %d: %w", block.NumberU64(), err)
-			}
-			if len(events) > 0 {
-				borReceipt, err := g.borGenerator.GenerateBorReceipt(ctx, tx, block, events, cfg)
-				if err != nil {
-					return nil, fmt.Errorf("ReceiptGen.GetReceipts: failed to generate bor receipt for block %d: %w", block.NumberU64(), err)
-				}
-				receipts = append(receipts, borReceipt)
-			}
-		}
-	*/
-
 	g.addToCacheReceipts(block.HeaderNoCopy(), receipts)
 	return receipts, nil
 }

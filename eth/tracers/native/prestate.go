@@ -329,6 +329,9 @@ func (t *prestateTracer) lookupStorage(addr common.Address, key common.Hash) {
 		return
 	}
 
+	// Ensure the account exists before accessing its storage
+	t.lookupAccount(addr)
+
 	if _, ok := t.pre[addr].Storage[key]; ok {
 		return
 	}

@@ -22,7 +22,7 @@ import (
 	"strconv"
 
 	"github.com/erigontech/erigon-lib/common"
-	"github.com/erigontech/erigon/execution/chain"
+	"github.com/erigontech/erigon-lib/common/generics"
 )
 
 // BorConfig is the consensus engine configs for bor-based sealing.
@@ -47,6 +47,7 @@ type BorConfig struct {
 	RioBlock          *big.Int `json:"rioBlock"`          // Rio switch block (nil = no fork, 0 = already on Rio)
 	MadhugiriBlock    *big.Int `json:"madhugiriBlock"`    // Madhugiri switch block (nil = no fork, 0 = already on Madhugiri)
 	MadhugiriProBlock *big.Int `json:"madhugiriProBlock"` // MadhugiriPro switch block (nil = no fork, 0 = already on MadhugiriPro)
+	DandeliBlock      *big.Int `json:"dandeliBlock"`      // Dandeli switch block (nil = no fork, 0 = already on Dandeli)
 
 	StateSyncConfirmationDelay map[string]uint64         `json:"stateSyncConfirmationDelay"` // StateSync Confirmation Delay, in seconds, to calculate `to`
 	Coinbase                   map[string]common.Address `json:"coinbase"`                   // coinbase address
@@ -59,7 +60,7 @@ func (c *BorConfig) String() string {
 }
 
 func (c *BorConfig) CalculateProducerDelay(number uint64) uint64 {
-	return chain.ConfigValueLookup(common.ParseMapKeysIntoUint64(c.ProducerDelay), number)
+	return ConfigValueLookup(common.ParseMapKeysIntoUint64(c.ProducerDelay), number)
 }
 
 func (c *BorConfig) IsSprintStart(number uint64) bool {
@@ -117,11 +118,11 @@ func (c *BorConfig) CalculateSprintNumber(number uint64) uint64 {
 }
 
 func (c *BorConfig) CalculateBackupMultiplier(number uint64) uint64 {
-	return chain.ConfigValueLookup(common.ParseMapKeysIntoUint64(c.BackupMultiplier), number)
+	return ConfigValueLookup(common.ParseMapKeysIntoUint64(c.BackupMultiplier), number)
 }
 
 func (c *BorConfig) CalculatePeriod(number uint64) uint64 {
-	return chain.ConfigValueLookup(common.ParseMapKeysIntoUint64(c.Period), number)
+	return ConfigValueLookup(common.ParseMapKeysIntoUint64(c.Period), number)
 }
 
 // isForked returns whether a fork scheduled at block s is active at the given head block.
@@ -205,13 +206,17 @@ func (c *BorConfig) GetMadhugiriProBlock() *big.Int {
 	return c.MadhugiriProBlock
 }
 
+func (c *BorConfig) IsDandeli(number uint64) bool {
+	return isForked(c.DandeliBlock, number)
+}
+
 func (c *BorConfig) CalculateStateSyncDelay(number uint64) uint64 {
-	return chain.ConfigValueLookup(common.ParseMapKeysIntoUint64(c.StateSyncConfirmationDelay), number)
+	return ConfigValueLookup(common.ParseMapKeysIntoUint64(c.StateSyncConfirmationDelay), number)
 }
 
 func (c *BorConfig) CalculateCoinbase(number uint64) common.Address {
 	if c.Coinbase != nil {
-		return chain.ConfigValueLookup(common.ParseMapKeysIntoUint64(c.Coinbase), number)
+		return ConfigValueLookup(common.ParseMapKeysIntoUint64(c.Coinbase), number)
 	} else {
 		return common.Address{}
 	}
@@ -252,4 +257,25 @@ func asSprints(configSprints map[string]uint64) sprints {
 	sort.Sort(sprints)
 
 	return sprints
+}
+
+// Duplicate of execution/chain's ConfigValueLookup function to avoid circular import
+
+// Looks up a config value as of a given block number (or time).
+// The assumption here is that config is a càdlàg map of starting_from_block -> value.
+// For example, config of {5: "A", 10: "B", 20: "C"}
+// means that the config value is "A" for blocks 5–9,
+// "B" for blocks 10–19, and "C" for block 20 and above.
+// For blocks 0–4 an empty string will be returned.
+func ConfigValueLookup[T any](field map[uint64]T, number uint64) T {
+	keys := common.SortedKeys(field)
+	if number < keys[0] {
+		return generics.Zero[T]()
+	}
+	for i := 0; i < len(keys)-1; i++ {
+		if number >= keys[i] && number < keys[i+1] {
+			return field[keys[i]]
+		}
+	}
+	return field[keys[len(keys)-1]]
 }

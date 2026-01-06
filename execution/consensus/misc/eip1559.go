@@ -109,6 +109,7 @@ func CalcBaseFee(config *chain.Config, parent *types.Header) *big.Int {
 	}
 
 	var (
+		// Modified for bor to derive gas target by percentage instead of using elasticity multiplier post dandeli HF
 		parentGasTarget          = calcParentGasTarget(config.Bor, parent)
 		parentGasTargetBig       = new(big.Int).SetUint64(parentGasTarget)
 		baseFeeChangeDenominator = new(big.Int).SetUint64(getBaseFeeChangeDenominator(config.Bor, parent.Number.Uint64()))

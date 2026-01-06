@@ -109,7 +109,8 @@ func CalcBaseFee(config *chain.Config, parent *types.Header) *big.Int {
 	}
 
 	var (
-		parentGasTarget          = parent.GasLimit / params.ElasticityMultiplier
+		// Modified for bor to derive gas target by percentage instead of using elasticity multiplier post dandeli HF
+		parentGasTarget          = calcParentGasTarget(config.Bor, parent)
 		parentGasTargetBig       = new(big.Int).SetUint64(parentGasTarget)
 		baseFeeChangeDenominator = new(big.Int).SetUint64(getBaseFeeChangeDenominator(config.Bor, parent.Number.Uint64()))
 	)
@@ -140,6 +141,18 @@ func CalcBaseFee(config *chain.Config, parent *types.Header) *big.Int {
 			common.Big0,
 		)
 	}
+}
+
+// calcParentGasTarget calculates the target gas based on parent block gas limit. Earlier
+// it was derived by `ElasticityMultiplier` as it had an integer multiplier value. Post
+// dandeli HF, a percentage value will be used to calculate the gas target.
+func calcParentGasTarget(borConfig chain.BorConfig, parent *types.Header) uint64 {
+	if borConfig, ok := borConfig.(*borcfg.BorConfig); ok {
+		if borConfig.IsDandeli(parent.Number.Uint64()) {
+			return parent.GasLimit * params.TargetGasPercentagePostDandeli / 100
+		}
+	}
+	return parent.GasLimit / params.ElasticityMultiplier
 }
 
 func getBaseFeeChangeDenominator(borConfig chain.BorConfig, number uint64) uint64 {

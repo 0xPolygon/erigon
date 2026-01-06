@@ -27,6 +27,7 @@ import (
 	"github.com/erigontech/erigon-lib/common"
 	"github.com/erigontech/erigon-lib/common/generics"
 	"github.com/erigontech/erigon/execution/chain/params"
+	"github.com/erigontech/erigon/polygon/bor/borcfg"
 )
 
 // Config is the core config which determines the blockchain settings.
@@ -140,6 +141,33 @@ var (
 		BerlinBlock:           big.NewInt(0),
 		LondonBlock:           big.NewInt(0),
 		Aura:                  &AuRaConfig{},
+	}
+
+	TestChainBorConfig = &Config{
+		ChainID:               big.NewInt(1337),
+		Consensus:             BorConsensus,
+		HomesteadBlock:        big.NewInt(0),
+		TangerineWhistleBlock: big.NewInt(0),
+		SpuriousDragonBlock:   big.NewInt(0),
+		ByzantiumBlock:        big.NewInt(0),
+		ConstantinopleBlock:   big.NewInt(0),
+		PetersburgBlock:       big.NewInt(0),
+		IstanbulBlock:         big.NewInt(0),
+		MuirGlacierBlock:      big.NewInt(0),
+		BerlinBlock:           big.NewInt(0),
+		LondonBlock:           big.NewInt(0),
+		Bor: &borcfg.BorConfig{
+			JaipurBlock:       big.NewInt(0),
+			DelhiBlock:        big.NewInt(0),
+			IndoreBlock:       big.NewInt(0),
+			AgraBlock:         big.NewInt(0),
+			NapoliBlock:       big.NewInt(0),
+			AhmedabadBlock:    big.NewInt(0),
+			BhilaiBlock:       big.NewInt(0),
+			RioBlock:          big.NewInt(0),
+			MadhugiriBlock:    big.NewInt(0),
+			MadhugiriProBlock: big.NewInt(0),
+		},
 	}
 
 	// AllProtocolChanges contains every protocol change (EIPs) introduced

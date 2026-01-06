@@ -158,7 +158,7 @@ func TestCalcParentGasTarget(t *testing.T) {
 			BaseFee:  big.NewInt(params.InitialBaseFee),
 		}
 		gasTarget := calcParentGasTarget(testConfig.Bor, block)
-		expected := block.GasLimit * 6 / 10 // because gas target is 60% of total block gas limit
+		expected := block.GasLimit * params.TargetGasPercentagePostDandeli / 100 // because gas target is derived by this protocol parameter
 		require.Equal(t, expected, gasTarget, "case #1: expected gas target = 60 percent of gas limit")
 
 		block = &types.Header{
@@ -168,7 +168,7 @@ func TestCalcParentGasTarget(t *testing.T) {
 			BaseFee:  big.NewInt(params.InitialBaseFee),
 		}
 		gasTarget = calcParentGasTarget(testConfig.Bor, block)
-		expected = block.GasLimit * 6 / 10 // because gas target is 60% of total block gas limit
+		expected = block.GasLimit * params.TargetGasPercentagePostDandeli / 100 // because gas target is derived by this protocol parameter
 		require.Equal(t, expected, gasTarget, "case #2: expected gas target = 60 percent of gas limit")
 	})
 

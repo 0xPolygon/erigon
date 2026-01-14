@@ -204,7 +204,7 @@ func MinNextBlockTime(parent *types.Header, succession int, config *borcfg.BorCo
 
 // ValidateHeaderTimeSignerSuccessionNumber - heimdall.ValidatorSet abstraction for unit tests
 type ValidateHeaderTimeSignerSuccessionNumber interface {
-	GetSignerSuccessionNumber(signer common.Address, number uint64) (int, error)
+	GetSignerSuccessionNumber(signer common.Address, number uint64, config *borcfg.BorConfig) (int, error)
 }
 
 //go:generate mockgen -typed=true -destination=./span_reader_mock.go -package=bor . spanReader
@@ -251,7 +251,7 @@ func ValidateHeaderTime(
 		return err
 	}
 
-	succession, err := validatorSet.GetSignerSuccessionNumber(signer, header.Number.Uint64())
+	succession, err := validatorSet.GetSignerSuccessionNumber(signer, header.Number.Uint64(), config)
 	if err != nil {
 		return err
 	}
@@ -661,7 +661,7 @@ func (c *Bor) verifySeal(chain ChainHeaderReader, header *types.Header, parents 
 			return err
 		}
 
-		difficulty := validatorSet.SafeDifficulty(signer)
+		difficulty := validatorSet.SafeDifficulty(signer, c.config)
 		if header.Difficulty.Uint64() != difficulty {
 			return &WrongDifficultyError{number, difficulty, header.Difficulty.Uint64(), signer.Bytes()}
 		}
@@ -685,7 +685,7 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, _
 	}
 
 	// Set the correct difficulty
-	header.Difficulty = new(big.Int).SetUint64(validatorSet.SafeDifficulty(c.authorizedSigner.Load().signer))
+	header.Difficulty = new(big.Int).SetUint64(validatorSet.SafeDifficulty(c.authorizedSigner.Load().signer, c.config))
 
 	// Ensure the extra data has all it's components
 	if len(header.Extra) < types.ExtraVanityLength {
@@ -765,7 +765,7 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, _
 	signer := c.authorizedSigner.Load().signer
 	// if the signer is not empty
 	if !bytes.Equal(signer.Bytes(), common.Address{}.Bytes()) {
-		succession, err = validatorSet.GetSignerSuccessionNumber(signer, number)
+		succession, err = validatorSet.GetSignerSuccessionNumber(signer, number, c.config)
 		if err != nil {
 			return err
 		}
@@ -986,7 +986,7 @@ func (c *Bor) Seal(_ consensus.ChainHeaderReader, blockWithReceipts *types.Block
 		return err
 	}
 
-	successionNumber, err = validatorSet.GetSignerSuccessionNumber(signer, number)
+	successionNumber, err = validatorSet.GetSignerSuccessionNumber(signer, number, c.config)
 	if err != nil {
 		return err
 	}
@@ -1087,7 +1087,7 @@ func (c *Bor) IsProposer(header *types.Header) (bool, error) {
 		return false, err
 	}
 
-	successionNumber, err := validatorSet.GetSignerSuccessionNumber(signer, number)
+	successionNumber, err := validatorSet.GetSignerSuccessionNumber(signer, number, c.config)
 	return successionNumber == 0, err
 }
 
@@ -1102,7 +1102,7 @@ func (c *Bor) CalcDifficulty(_ consensus.ChainHeaderReader, _, _ uint64, _ *big.
 		return nil
 	}
 
-	return big.NewInt(int64(validatorSet.SafeDifficulty(signer)))
+	return big.NewInt(int64(validatorSet.SafeDifficulty(signer, c.config)))
 
 }
 

@@ -52,7 +52,7 @@ func (calc *wiggleCalc) CalculateWiggle(ctx context.Context, header *types.Heade
 		return 0, err
 	}
 
-	succession, err := producers.GetSignerSuccessionNumber(signer, header.Number.Uint64())
+	succession, err := producers.GetSignerSuccessionNumber(signer, header.Number.Uint64(), calc.borConfig)
 	if err != nil {
 		return 0, err
 	}

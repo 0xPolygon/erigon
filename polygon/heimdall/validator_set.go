@@ -27,6 +27,7 @@ import (
 
 	"github.com/erigontech/erigon-lib/common"
 	"github.com/erigontech/erigon-lib/log/v3"
+	"github.com/erigontech/erigon/polygon/bor/borcfg"
 )
 
 // MaxTotalVotingPower - the maximum allowed total voting power.
@@ -837,8 +838,8 @@ func (vals *ValidatorSet) UpdateWithChangeSet(changes []*Validator) error {
 }
 
 // Difficulty returns the difficulty for a particular signer at the current snapshot number
-func (vals *ValidatorSet) Difficulty(signer common.Address) (uint64, error) {
-	indexDiff, err := vals.GetSignerSuccessionNumber(signer, 0)
+func (vals *ValidatorSet) Difficulty(signer common.Address, config *borcfg.BorConfig) (uint64, error) {
+	indexDiff, err := vals.GetSignerSuccessionNumber(signer, 0, config)
 	if err != nil {
 		return 0, fmt.Errorf("ValidatorSet.Difficulty: %w", err)
 	}
@@ -848,12 +849,12 @@ func (vals *ValidatorSet) Difficulty(signer common.Address) (uint64, error) {
 
 // SafeDifficulty returns the difficulty for a particular signer at the current snapshot number if available,
 // otherwise it returns 1 for empty signer and 0 if it is not in the validator set.
-func (vals *ValidatorSet) SafeDifficulty(signer common.Address) uint64 {
+func (vals *ValidatorSet) SafeDifficulty(signer common.Address, config *borcfg.BorConfig) uint64 {
 	if bytes.Equal(signer.Bytes(), common.Address{}.Bytes()) {
 		return 1
 	}
 
-	if d, err := vals.Difficulty(signer); err == nil {
+	if d, err := vals.Difficulty(signer, config); err == nil {
 		return d
 	} else {
 		return 0
@@ -861,7 +862,7 @@ func (vals *ValidatorSet) SafeDifficulty(signer common.Address) uint64 {
 }
 
 // GetSignerSuccessionNumber returns the relative position of signer in terms of the in-turn proposer
-func (vals *ValidatorSet) GetSignerSuccessionNumber(signer common.Address, number uint64) (int, error) {
+func (vals *ValidatorSet) GetSignerSuccessionNumber(signer common.Address, number uint64, config *borcfg.BorConfig) (int, error) {
 	proposer := vals.GetProposer()
 	if proposer == nil {
 		return -1, &UnauthorizedProposerError{Number: number, Proposer: []byte{}}
@@ -873,7 +874,7 @@ func (vals *ValidatorSet) GetSignerSuccessionNumber(signer common.Address, numbe
 	}
 
 	signerIndex, _ := vals.GetByAddress(signer)
-	if signerIndex < 0 && !isPartOfVeBlopSet(signer, number) {
+	if signerIndex < 0 && !isAllowedByValidatorSetOverride(signer, number, config) {
 		return -1, &UnauthorizedSignerError{Number: number, Signer: signer.Bytes()}
 	}
 
@@ -1108,14 +1109,31 @@ func (e *UnauthorizedSignerError) Error() string {
 	)
 }
 
-// TODO: hack - remove me later
-func isPartOfVeBlopSet(addr common.Address, blockNumber uint64) bool {
-	if blockNumber < 80440819 || blockNumber > 80443486 {
+func isAllowedByValidatorSetOverride(addr common.Address, blockNumber uint64, config *borcfg.BorConfig) bool {
+	if config == nil || config.OverrideValidatorSetInRange == nil {
 		return false
 	}
-	a := addr.String()
-	return a == "0x25B9fC2ED95BBAa9c030e57C860545a17694F90D" ||
-		a == "0x41018795fA95783117242244303fd7e26e964eE8" ||
-		a == "0xcA4793C93A94E7A70a4631b1CecE6546e76eb19e" ||
-		a == "0x0e94B9b3fABD95338B8b23C36caAE1d640e1339f"
+
+	overrides := config.OverrideValidatorSetInRange
+	if len(overrides) == 0 {
+		return false
+	}
+
+	for _, o := range overrides {
+		// Check block range (inclusive)
+		if blockNumber < o.StartBlock || blockNumber > o.EndBlock {
+			continue
+		}
+
+		// Block is within override range, check if signer is allowed
+		for _, v := range o.Validators {
+			if v == addr {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	return false
 }

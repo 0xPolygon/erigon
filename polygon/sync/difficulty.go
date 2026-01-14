@@ -52,5 +52,5 @@ func (calc *DifficultyCalculator) signerDifficulty(
 		return 0, err
 	}
 
-	return producers.Difficulty(signer)
+	return producers.Difficulty(signer, calc.borConfig)
 }

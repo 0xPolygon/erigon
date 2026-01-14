@@ -484,12 +484,4 @@ func TestValidatorSetOverride_SuccessionNumberBehavior(t *testing.T) {
 	overrideSuccession, err := validatorSet.GetSignerSuccessionNumber(overrideValidator, blockNumber, config)
 	require.NoError(t, err)
 	t.Logf("Override validator succession: %d (validator set size: %d)", overrideSuccession, len(validatorSet.Validators))
-
-	// Document the behavior: signerIndex = -1, proposerIndex = 0
-	// indexDiff = -1 - 0 = -1
-	// After wrap: indexDiff = -1 + len(validators) = len(validators) - 1
-	// This gives override validators the HIGHEST succession number (lowest priority)
-
-	// If this is NOT intended behavior, the code should be modified to give
-	// override validators a specific succession number (e.g., 0 for highest priority)
 }

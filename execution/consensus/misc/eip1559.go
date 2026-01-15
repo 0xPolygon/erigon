@@ -36,7 +36,7 @@ import (
 
 // VerifyEip1559Header verifies some header attributes which were changed in EIP-1559,
 // - gas limit check
-// - basefee check
+// - basefee check (pre-Dandeli only; after Dandeli HF base fee validation is removed to allow dynamic setting)
 func VerifyEip1559Header(config *chain.Config, parent, header *types.Header, skipGasLimit bool) error {
 	if !skipGasLimit {
 		// Verify that the gas limit remains within allowed bounds
@@ -52,12 +52,25 @@ func VerifyEip1559Header(config *chain.Config, parent, header *types.Header, ski
 	if header.BaseFee == nil {
 		return errors.New("header is missing baseFee")
 	}
-	// Verify the baseFee is correct based on the parent header.
+
+	// After Dandeli hard fork, base fee validation is removed to allow dynamic configuration.
+	// This enables validators to set base fees according to new consensus rules without
+	// strict protocol enforcement, supporting more flexible fee markets.
+	// Pre-Dandeli blocks still require strict base fee validation for consensus safety.
+	if borConfig, ok := config.Bor.(*borcfg.BorConfig); ok {
+		if borConfig.IsDandeli(header.Number.Uint64()) {
+			// Post-Dandeli: Skip base fee validation
+			return nil
+		}
+	}
+
+	// Pre-Dandeli: Verify the baseFee is correct based on the parent header
 	expectedBaseFee := CalcBaseFee(config, parent)
 	if header.BaseFee.Cmp(expectedBaseFee) != 0 {
 		return fmt.Errorf("invalid baseFee: have %s, want %s, parentBaseFee %s, parentGasUsed %d",
 			header.BaseFee, expectedBaseFee, parent.BaseFee, parent.GasUsed)
 	}
+
 	return nil
 }
 

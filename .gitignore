@@ -111,3 +111,6 @@ mdbx.lck
 /*/**/nodekey
 
 .my
+
+# Claude Code context file
+CLAUDE.md

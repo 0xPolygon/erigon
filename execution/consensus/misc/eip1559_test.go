@@ -342,3 +342,150 @@ func TestCalcBaseFeeDandeli(t *testing.T) {
 		)
 	}
 }
+
+// TestVerifyEip1559HeaderNoBaseFeeValidation tests that after removing the base fee validation,
+// headers with any base fee are accepted (as long as it's not nil)
+func TestVerifyEip1559HeaderNoBaseFeeValidation(t *testing.T) {
+	t.Parallel()
+
+	testConfig := borConfig()
+	if borConfig, ok := testConfig.Bor.(*borcfg.BorConfig); ok {
+		borConfig.DandeliBlock = big.NewInt(20)
+	} else {
+		t.Fatalf("Unable to load bor config for test")
+	}
+
+	parent := &types.Header{
+		Number:   big.NewInt(20),
+		GasLimit: 30_000_000,
+		GasUsed:  15_000_000,
+		BaseFee:  big.NewInt(1_000_000_000),
+	}
+
+	t.Run("accepts arbitrary base fee after validation removal", func(t *testing.T) {
+		// Header with a base fee that doesn't match the calculated value
+		// This should be accepted since we removed the validation
+		header := &types.Header{
+			Number:   big.NewInt(21),
+			GasLimit: 30_000_000,
+			GasUsed:  20_000_000,
+			BaseFee:  big.NewInt(5_000_000_000), // Arbitrary value
+		}
+
+		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+		require.NoError(t, err, "should accept header with arbitrary base fee")
+	})
+
+	t.Run("accepts base fee different from calculated", func(t *testing.T) {
+		calculatedBaseFee := CalcBaseFee(testConfig, parent)
+
+		// Use a completely different base fee
+		differentBaseFee := new(big.Int).Mul(calculatedBaseFee, big.NewInt(10))
+
+		header := &types.Header{
+			Number:   big.NewInt(21),
+			GasLimit: 30_000_000,
+			GasUsed:  20_000_000,
+			BaseFee:  differentBaseFee,
+		}
+
+		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+		require.NoError(t, err, "should accept header with base fee different from calculated")
+	})
+
+	t.Run("rejects nil base fee", func(t *testing.T) {
+		header := &types.Header{
+			Number:   big.NewInt(21),
+			GasLimit: 30_000_000,
+			GasUsed:  20_000_000,
+			BaseFee:  nil, // Nil base fee should still be rejected
+		}
+
+		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+		require.Error(t, err, "should reject header with nil base fee")
+		require.Contains(t, err.Error(), "baseFee", "error should mention baseFee")
+	})
+
+	t.Run("accepts zero base fee", func(t *testing.T) {
+		header := &types.Header{
+			Number:   big.NewInt(21),
+			GasLimit: 30_000_000,
+			GasUsed:  20_000_000,
+			BaseFee:  big.NewInt(0), // Zero is valid
+		}
+
+		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+		require.NoError(t, err, "should accept header with zero base fee")
+	})
+}
+
+// TestBaseFeeValidationPreDandeli tests that base fee validation still works before Dandeli HF
+func TestBaseFeeValidationPreDandeli(t *testing.T) {
+	t.Parallel()
+
+	testConfig := borConfig()
+	if borConfig, ok := testConfig.Bor.(*borcfg.BorConfig); ok {
+		borConfig.DandeliBlock = big.NewInt(20)
+	} else {
+		t.Fatalf("Unable to load bor config for test")
+	}
+
+	parent := &types.Header{
+		Number:   big.NewInt(10), // Pre-Dandeli
+		GasLimit: 30_000_000,
+		GasUsed:  15_000_000,
+		BaseFee:  big.NewInt(1_000_000_000),
+	}
+
+	t.Run("pre-Dandeli: rejects incorrect base fee", func(t *testing.T) {
+		calculatedBaseFee := CalcBaseFee(testConfig, parent)
+		incorrectBaseFee := new(big.Int).Mul(calculatedBaseFee, big.NewInt(2))
+
+		header := &types.Header{
+			Number:   big.NewInt(11),
+			GasLimit: 30_000_000,
+			GasUsed:  20_000_000,
+			BaseFee:  incorrectBaseFee, // Wrong base fee
+		}
+
+		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+		require.Error(t, err, "should reject incorrect base fee pre-Dandeli")
+		require.Contains(t, err.Error(), "invalid baseFee", "error should mention invalid baseFee")
+	})
+
+	t.Run("pre-Dandeli: accepts correct base fee", func(t *testing.T) {
+		calculatedBaseFee := CalcBaseFee(testConfig, parent)
+
+		header := &types.Header{
+			Number:   big.NewInt(11),
+			GasLimit: 30_000_000,
+			GasUsed:  20_000_000,
+			BaseFee:  calculatedBaseFee, // Correct base fee
+		}
+
+		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+		require.NoError(t, err, "should accept correct base fee pre-Dandeli")
+	})
+
+	t.Run("post-Dandeli: accepts any base fee", func(t *testing.T) {
+		parent := &types.Header{
+			Number:   big.NewInt(20), // Post-Dandeli
+			GasLimit: 30_000_000,
+			GasUsed:  15_000_000,
+			BaseFee:  big.NewInt(1_000_000_000),
+		}
+
+		calculatedBaseFee := CalcBaseFee(testConfig, parent)
+		arbitraryBaseFee := new(big.Int).Mul(calculatedBaseFee, big.NewInt(5))
+
+		header := &types.Header{
+			Number:   big.NewInt(21),
+			GasLimit: 30_000_000,
+			GasUsed:  20_000_000,
+			BaseFee:  arbitraryBaseFee, // Arbitrary base fee
+		}
+
+		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+		require.NoError(t, err, "should accept arbitrary base fee post-Dandeli")
+	})
+}

@@ -475,13 +475,20 @@ func TestValidatorSetOverride_SuccessionNumberBehavior(t *testing.T) {
 	succession1, err := validatorSet.GetSignerSuccessionNumber(normalValidator, blockNumber, config)
 	require.NoError(t, err)
 	t.Logf("Normal validator 1 succession: %d", succession1)
+	// First validator (0xAAAA...) is the proposer (lexicographically smallest), so succession = 0
+	assert.Equal(t, 0, succession1, "normalValidator should have succession number 0")
 
 	succession2, err := validatorSet.GetSignerSuccessionNumber(normalValidator2, blockNumber, config)
 	require.NoError(t, err)
 	t.Logf("Normal validator 2 succession: %d", succession2)
+	// Second validator is one position after the proposer, so succession = 1
+	assert.Equal(t, 1, succession2, "normalValidator2 should have succession number 1")
 
 	// Override validator is allowed but gets a calculated succession number
+	// Since it's not in the validator set, signerIndex = -1
+	// indexDiff = -1 - proposerIndex(0) = -1, then wraps: -1 + len(validators)(2) = 1
 	overrideSuccession, err := validatorSet.GetSignerSuccessionNumber(overrideValidator, blockNumber, config)
 	require.NoError(t, err)
 	t.Logf("Override validator succession: %d (validator set size: %d)", overrideSuccession, len(validatorSet.Validators))
+	assert.Equal(t, 1, overrideSuccession, "override validator should have succession number 1 (wrapped from -1)")
 }

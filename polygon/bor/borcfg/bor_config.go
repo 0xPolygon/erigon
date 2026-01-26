@@ -34,8 +34,9 @@ type BorConfig struct {
 	ValidatorContract     string            `json:"validatorContract"`     // Validator set contract
 	StateReceiverContract string            `json:"stateReceiverContract"` // State receiver contract
 
-	OverrideStateSyncRecords map[string]int         `json:"overrideStateSyncRecords"` // override state records count
-	BlockAlloc               map[string]interface{} `json:"blockAlloc"`
+	OverrideStateSyncRecords    map[string]int                   `json:"overrideStateSyncRecords"`    // override state records count
+	OverrideValidatorSetInRange []BlockRangeOverrideValidatorSet `json:"overrideValidatorSetInRange"` // override validator set in a given block range
+	BlockAlloc                  map[string]interface{}           `json:"blockAlloc"`
 
 	JaipurBlock       *big.Int `json:"jaipurBlock"`       // Jaipur switch block (nil = no fork, 0 = already on Jaipur)
 	DelhiBlock        *big.Int `json:"delhiBlock"`        // Delhi switch block (nil = no fork, 0 = already on Delhi)
@@ -52,6 +53,12 @@ type BorConfig struct {
 	StateSyncConfirmationDelay map[string]uint64         `json:"stateSyncConfirmationDelay"` // StateSync Confirmation Delay, in seconds, to calculate `to`
 	Coinbase                   map[string]common.Address `json:"coinbase"`                   // coinbase address
 	sprints                    sprints
+}
+
+type BlockRangeOverrideValidatorSet struct {
+	StartBlock uint64           `json:"startBlock"`
+	EndBlock   uint64           `json:"endBlock"`
+	Validators []common.Address `json:"validators"`
 }
 
 // String implements the stringer interface, returning the consensus engine details.

@@ -350,7 +350,7 @@ func (suite *ServiceTestSuite) producersSubTest(blockNum uint64) {
 		for _, signer := range wantProducers.Signers {
 			wantDifficulty := signer.Difficulty
 			_, producer := haveProducers.GetByAddress(signer.Signer)
-			haveDifficulty, err := haveProducers.Difficulty(producer.Address)
+			haveDifficulty, err := haveProducers.Difficulty(producer.Address, nil)
 			require.NoError(t, err)
 
 			errInfoMsgArgs = []interface{}{

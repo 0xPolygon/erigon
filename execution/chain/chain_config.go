@@ -213,8 +213,8 @@ type BorConfig interface {
 	IsMadhugiriPro(num uint64) bool
 	GetMadhugiriBlock() *big.Int
 	GetMadhugiriProBlock() *big.Int
-	IsTBDHF(num uint64) bool
-	GetTBDHFBlock() *big.Int
+	IsLisovo(num uint64) bool
+	GetLisovoBlock() *big.Int
 	StateReceiverContractAddress() common.Address
 	CalculateSprintNumber(number uint64) uint64
 	CalculateSprintLength(number uint64) uint64
@@ -382,8 +382,8 @@ func (c *Config) IsMadhugiriPro(num uint64) bool {
 	return (c != nil) && (c.Bor != nil) && c.Bor.IsMadhugiriPro(num)
 }
 
-func (c *Config) IsTBDHF(num uint64) bool {
-	return (c != nil) && (c.Bor != nil) && c.Bor.IsTBDHF(num)
+func (c *Config) IsLisovo(num uint64) bool {
+	return (c != nil) && (c.Bor != nil) && c.Bor.IsLisovo(num)
 }
 
 // IsCancun returns whether time is either equal to the Cancun fork time or greater.
@@ -763,7 +763,7 @@ type Rules struct {
 	IsIstanbul, IsBerlin, IsLondon, IsShanghai                       bool
 	IsCancun, IsNapoli, IsBhilai, IsRio, IsMadhugiri, IsMadhugiriPro bool
 	IsPrague, IsOsaka                                                bool
-	IsTBDHF                                                          bool
+	IsLisovo                                                         bool
 	IsAura                                                           bool
 }
 

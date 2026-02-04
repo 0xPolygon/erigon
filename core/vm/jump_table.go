@@ -70,7 +70,7 @@ var (
 	cancunInstructionSet           = newCancunInstructionSet()
 	pragueInstructionSet           = newPragueInstructionSet()
 	osakaInstructionSet            = newOsakaInstructionSet()
-	tbdhfInstructionSet            = newTBDHFInstructionSet()
+	lisovoInstructionSet           = newLisovoInstructionSet()
 )
 
 // JumpTable contains the EVM opcodes supported at a given fork.
@@ -292,7 +292,7 @@ func newHomesteadInstructionSet() JumpTable {
 	return instructionSet
 }
 
-func newTBDHFInstructionSet() JumpTable {
+func newLisovoInstructionSet() JumpTable {
 	instructionSet := newBhilaiInstructionSet()
 	enable7939(&instructionSet) // EIP-7939 (CLZ opcode)
 	validateAndFillMaxStack(&instructionSet)

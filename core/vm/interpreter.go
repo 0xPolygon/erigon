@@ -181,8 +181,8 @@ type EVMInterpreter struct {
 func NewEVMInterpreter(evm *EVM, cfg Config) *EVMInterpreter {
 	var jt *JumpTable
 	switch {
-	case evm.chainRules.IsTBDHF:
-		jt = &tbdhfInstructionSet
+	case evm.chainRules.IsLisovo:
+		jt = &lisovoInstructionSet
 	case evm.chainRules.IsOsaka:
 		jt = &osakaInstructionSet
 	case evm.ChainRules().IsBhilai:

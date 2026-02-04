@@ -60,8 +60,8 @@ type PrecompiledContract interface {
 
 func Precompiles(chainRules *chain.Rules) map[common.Address]PrecompiledContract {
 	switch {
-	case chainRules.IsTBDHF:
-		return PrecompiledContractsTBDHF
+	case chainRules.IsLisovo:
+		return PrecompiledContractsLisovo
 	case chainRules.IsMadhugiriPro:
 		return PrecompiledContractsMadhugiriPro
 	case chainRules.IsMadhugiri:
@@ -265,9 +265,9 @@ var PrecompiledContractsMadhugiriPro = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{0x01, 0x00}): &p256Verify{eip7951: false},
 }
 
-// PrecompiledContractsTBDHF contains the set of pre-compiled Ethereum
-// contracts used in the TBDHF release (bor HF).
-var PrecompiledContractsTBDHF = map[common.Address]PrecompiledContract{
+// PrecompiledContractsLisovo contains the set of pre-compiled Ethereum
+// contracts used in the Lisovo release (bor HF).
+var PrecompiledContractsLisovo = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{0x01}):       &ecrecover{},
 	common.BytesToAddress([]byte{0x02}):       &sha256hash{},
 	common.BytesToAddress([]byte{0x03}):       &ripemd160hash{},
@@ -289,7 +289,7 @@ var PrecompiledContractsTBDHF = map[common.Address]PrecompiledContract{
 }
 
 var (
-	PrecompiledAddressesTBDHF        []common.Address
+	PrecompiledAddressesLisovo       []common.Address
 	PrecompiledAddressesMadhugiriPro []common.Address
 	PrecompiledAddressesMadhugiri    []common.Address
 	PrecompiledAddressesOsaka        []common.Address
@@ -337,16 +337,16 @@ func init() {
 	for k := range PrecompiledContractsMadhugiriPro {
 		PrecompiledAddressesMadhugiriPro = append(PrecompiledAddressesMadhugiriPro, k)
 	}
-	for k := range PrecompiledContractsTBDHF {
-		PrecompiledAddressesTBDHF = append(PrecompiledAddressesTBDHF, k)
+	for k := range PrecompiledContractsLisovo {
+		PrecompiledAddressesLisovo = append(PrecompiledAddressesLisovo, k)
 	}
 }
 
 // ActivePrecompiles returns the precompiles enabled with the current configuration.
 func ActivePrecompiles(rules *chain.Rules) []common.Address {
 	switch {
-	case rules.IsTBDHF:
-		return PrecompiledAddressesTBDHF
+	case rules.IsLisovo:
+		return PrecompiledAddressesLisovo
 	case rules.IsMadhugiriPro:
 		return PrecompiledAddressesMadhugiriPro
 	case rules.IsMadhugiri:

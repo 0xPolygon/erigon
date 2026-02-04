@@ -33,6 +33,7 @@ import (
 	"github.com/erigontech/erigon-lib/common"
 	"github.com/erigontech/erigon-lib/common/hexutil"
 	"github.com/erigontech/erigon-lib/common/math"
+	"github.com/erigontech/erigon/execution/chain/params"
 )
 
 // precompiledTest defines the input/output pairs for precompiled contract tests.
@@ -485,4 +486,42 @@ func TestPrecompiledP256Verify(t *testing.T) {
 	t.Parallel()
 	testJson("p256Verify", "100", t)
 	testJson("p256Verify-EIP-7951", "a100", t)
+}
+
+// TestTBDHFP256VerifyGasCost verifies P256 precompile gas cost changes at TBDHF
+func TestTBDHFP256VerifyGasCost(t *testing.T) {
+	preTBDHF := &p256Verify{eip7951: false}
+	postTBDHF := &p256Verify{eip7951: true}
+
+	preGas := preTBDHF.RequiredGas(nil)
+	postGas := postTBDHF.RequiredGas(nil)
+
+	if preGas != params.P256VerifyGas {
+		t.Errorf("pre-TBDHF gas: got %d, want %d", preGas, params.P256VerifyGas)
+	}
+	if postGas != params.P256VerifyGasEIP7951 {
+		t.Errorf("post-TBDHF gas: got %d, want %d", postGas, params.P256VerifyGasEIP7951)
+	}
+	if preGas >= postGas {
+		t.Errorf("post-TBDHF gas (%d) should be higher than pre-TBDHF (%d)", postGas, preGas)
+	}
+}
+
+// TestTBDHFCLZOpcode verifies CLZ opcode availability at TBDHF.
+func TestTBDHFCLZOpcode(t *testing.T) {
+	preTBDHF := newBhilaiInstructionSet()
+	postTBDHF := newTBDHFInstructionSet()
+
+	// Pre-TBDHF: CLZ should be undefined.
+	if preTBDHF[CLZ].execute != nil && preTBDHF[CLZ].constantGas != 0 {
+		t.Error("CLZ opcode should not be defined pre-TBDHF")
+	}
+
+	// Post-TBDHF: CLZ should be defined.
+	if postTBDHF[CLZ].execute == nil {
+		t.Error("CLZ opcode should be defined post-TBDHF")
+	}
+	if postTBDHF[CLZ].constantGas != GasFastStep {
+		t.Errorf("CLZ gas: got %d, want %d", postTBDHF[CLZ].constantGas, GasFastStep)
+	}
 }

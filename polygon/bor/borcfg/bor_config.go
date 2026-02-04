@@ -49,6 +49,7 @@ type BorConfig struct {
 	MadhugiriBlock    *big.Int `json:"madhugiriBlock"`    // Madhugiri switch block (nil = no fork, 0 = already on Madhugiri)
 	MadhugiriProBlock *big.Int `json:"madhugiriProBlock"` // MadhugiriPro switch block (nil = no fork, 0 = already on MadhugiriPro)
 	DandeliBlock      *big.Int `json:"dandeliBlock"`      // Dandeli switch block (nil = no fork, 0 = already on Dandeli)
+	TBDHFBlock        *big.Int `json:"tbdhfBlock"`        // TBDHF switch block (nil = no fork, 0 = already on TBDHF)
 
 	StateSyncConfirmationDelay map[string]uint64         `json:"stateSyncConfirmationDelay"` // StateSync Confirmation Delay, in seconds, to calculate `to`
 	Coinbase                   map[string]common.Address `json:"coinbase"`                   // coinbase address
@@ -215,6 +216,14 @@ func (c *BorConfig) GetMadhugiriProBlock() *big.Int {
 
 func (c *BorConfig) IsDandeli(number uint64) bool {
 	return isForked(c.DandeliBlock, number)
+}
+
+func (c *BorConfig) IsTBDHF(number uint64) bool {
+	return isForked(c.TBDHFBlock, number)
+}
+
+func (c *BorConfig) GetTBDHFBlock() *big.Int {
+	return c.TBDHFBlock
 }
 
 func (c *BorConfig) CalculateStateSyncDelay(number uint64) uint64 {

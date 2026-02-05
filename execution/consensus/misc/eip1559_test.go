@@ -570,16 +570,16 @@ func TestVerifyBaseFeeWithinBoundariesLowFees(t *testing.T) {
 
 	// Test multiple low base fee levels
 	testCases := []struct {
-		name           string
-		parentBaseFee  int64
-		acceptBaseFee  int64 // Should pass validation (within 1 wei)
-		rejectBaseFee  int64 // Should fail validation (exceeds 1 wei)
+		name          string
+		parentBaseFee int64
+		acceptBaseFee int64 // Should pass validation (within 1 wei)
+		rejectBaseFee int64 // Should fail validation (exceeds 1 wei)
 	}{
-		{"1 wei base fee", 1, 2, 3},       // 1→2 OK, 1→3 FAIL
-		{"10 wei base fee", 10, 11, 12},   // 10→11 OK, 10→12 FAIL
-		{"19 wei base fee", 19, 20, 21},   // 19→20 OK, 19→21 FAIL (still rounds to 0)
-		{"20 wei base fee", 20, 21, 23},   // 20→21 OK (5%=1), 20→23 FAIL
-		{"100 wei base fee", 100, 105, 106}, // 100→105 OK (5%=5), 100→106 FAIL
+		{"1 wei base fee", 1, 2, 3},                                      // 1→2 OK, 1→3 FAIL
+		{"10 wei base fee", 10, 11, 12},                                  // 10→11 OK, 10→12 FAIL
+		{"19 wei base fee", 19, 20, 21},                                  // 19→20 OK, 19→21 FAIL (still rounds to 0)
+		{"20 wei base fee", 20, 21, 23},                                  // 20→21 OK (5%=1), 20→23 FAIL
+		{"100 wei base fee", 100, 105, 106},                              // 100→105 OK (5%=5), 100→106 FAIL
 		{"1 gwei base fee", 1_000_000_000, 1_050_000_000, 1_060_000_000}, // Normal range
 	}
 

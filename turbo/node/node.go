@@ -57,7 +57,7 @@ func (eri *ErigonNode) Serve() error {
 
 	eri.stack.Wait()
 
-	return nil
+	return eri.backend.BgComponentError()
 }
 
 func (eri *ErigonNode) Backend() *eth.Ethereum {

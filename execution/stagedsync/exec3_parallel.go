@@ -132,7 +132,11 @@ func (te *txExecutor) getHeader(ctx context.Context, hash common.Hash, number ui
 }
 
 func (te *txExecutor) shouldGenerateChangeSets() bool {
-	return shouldGenerateChangeSets(te.cfg, te.inputBlockNum.Load(), te.maxBlockNum, te.initialCycle)
+	var finalizedBlockNum uint64
+	if te.cfg.syncCfg.UseForkchoiceFinality {
+		finalizedBlockNum = getFinalizedBlockNum(te.applyTx)
+	}
+	return shouldGenerateChangeSets(te.cfg, finalizedBlockNum, te.inputBlockNum.Load(), te.maxBlockNum, te.initialCycle)
 }
 
 type parallelExecutor struct {

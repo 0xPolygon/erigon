@@ -228,6 +228,7 @@ type Ethereum struct {
 	heimdallService     *heimdall.Service
 	stopNode            func() error
 	bgComponentsEg      errgroup.Group
+	bgComponentErr      error
 }
 
 func splitAddrIntoHostAndPort(addr string) (host string, port int, err error) {
@@ -1824,9 +1825,16 @@ func (s *Ethereum) Stop() error {
 
 	if err := s.bgComponentsEg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
 		s.logger.Error("background component error", "err", err)
+		s.bgComponentErr = err
 	}
 
 	return nil
+}
+
+// BgComponentError returns the first non-context-canceled error from background
+// components, if any. It is safe to call after Stop() has returned.
+func (s *Ethereum) BgComponentError() error {
+	return s.bgComponentErr
 }
 
 func (s *Ethereum) ChainDB() kv.RwDB {

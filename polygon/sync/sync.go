@@ -49,6 +49,10 @@ const maxBlockBatchDownloadSize = 256
 const heimdallSyncRetryIntervalOnTip = 200 * time.Millisecond
 const heimdallSyncRetryIntervalOnStartup = 30 * time.Second
 
+// catchUpAgeThreshold is the maximum acceptable tip age before the event loop
+// breaks out and re-enters syncToTip for efficient waypoint-based catch-up batching.
+const catchUpAgeThreshold = 30 * time.Second
+
 var (
 	futureMilestoneDelay  = 1 * time.Second // amount of time to wait before putting a future milestone back in the event queue
 	errAlreadyProcessed   = errors.New("already processed")
@@ -143,6 +147,11 @@ type Sync struct {
 	wiggleCalculator   wiggleCalculator
 	engineAPISwitcher  EngineAPISwitcher
 	blockRequestsCache *lru.ARCCache[common.Hash, struct{}]
+
+	// lastTipAge tracks how far behind the chain tip the node is.
+	// Updated in commitExecution, used to detect when the event loop
+	// should break out and re-enter syncToTip for catch-up batching.
+	lastTipAge time.Duration
 }
 
 func (s *Sync) commitExecution(ctx context.Context, newTip *types.Header, finalizedHeader *types.Header) error {
@@ -153,6 +162,7 @@ func (s *Sync) commitExecution(ctx context.Context, newTip *types.Header, finali
 	blockNum := newTip.Number.Uint64()
 
 	age := common.PrettyAge(time.Unix(int64(newTip.Time), 0))
+	s.lastTipAge = time.Since(time.Unix(int64(newTip.Time), 0))
 	s.logger.Info(syncLogPrefix("update fork choice"), "block", blockNum, "hash", newTip.Hash(), "age", age)
 	fcStartTime := time.Now()
 
@@ -862,23 +872,51 @@ func (s *Sync) Run(ctx context.Context) error {
 	}
 
 	s.logger.Info(syncLogPrefix("running sync component"))
-	result, err := s.syncToTip(ctx)
-	if err != nil {
-		return err
-	}
 
-	if s.config.PolygonPosSingleSlotFinality {
-		if result.latestTip.Number.Uint64() >= s.config.PolygonPosSingleSlotFinalityBlockAt {
-			s.engineAPISwitcher.SetConsuming(true)
+	// Outer catch-up loop: when the event loop falls behind, break out and
+	// re-enter syncToTip which uses efficient waypoint-based batching.
+	for {
+		result, err := s.syncToTip(ctx)
+		if err != nil {
+			return err
+		}
+
+		if s.config.PolygonPosSingleSlotFinality {
+			if result.latestTip.Number.Uint64() >= s.config.PolygonPosSingleSlotFinalityBlockAt {
+				s.logger.Info(syncLogPrefix("switching to engine API mode (SSF)"), "tip", result.latestTip.Number.Uint64())
+				s.engineAPISwitcher.SetConsuming(true)
+				return nil
+			}
+		}
+
+		ccBuilder, err := s.initialiseCcb(ctx, result)
+		if err != nil {
+			return err
+		}
+
+		needsCatchUp, err := s.runEventLoop(ctx, ccBuilder)
+		if err != nil {
+			return err
+		}
+		if !needsCatchUp {
 			return nil
 		}
-	}
 
-	ccBuilder, err := s.initialiseCcb(ctx, result)
-	if err != nil {
-		return err
+		s.logger.Info(syncLogPrefix("re-entering syncToTip for catch-up"),
+			"lastTipAge", s.lastTipAge,
+			"threshold", catchUpAgeThreshold,
+		)
 	}
+}
 
+// runEventLoop processes tip events (new blocks, milestones, block hashes) one at a time.
+// It returns needsCatchUp=true when the node has fallen too far behind and should re-enter
+// syncToTip for efficient waypoint-based batch catch-up.
+//
+// Known limitations:
+// - initialCycle is never true during catch-up re-entries (conservative pruning applies)
+// - Span rotation every 128 blocks (~256s) adds ~12s overhead, which can trigger catch-up
+func (s *Sync) runEventLoop(ctx context.Context, ccBuilder *CanonicalChainBuilder) (needsCatchUp bool, err error) {
 	inactivityDuration := 30 * time.Second
 	lastProcessedEventTime := time.Now()
 	inactivityTicker := time.NewTicker(inactivityDuration)
@@ -889,34 +927,46 @@ func (s *Sync) Run(ctx context.Context) error {
 			if s.config.PolygonPosSingleSlotFinality {
 				block, err := s.execution.CurrentHeader(ctx)
 				if err != nil {
-					return err
+					return false, err
 				}
 
 				if block.Number.Uint64() >= s.config.PolygonPosSingleSlotFinalityBlockAt {
 					s.engineAPISwitcher.SetConsuming(true)
-					return nil
+					return false, nil
 				}
 			}
 
+			var checkAge bool
 			switch event.Type {
 			case EventTypeNewMilestone:
 				if err = s.applyNewMilestoneOnTip(ctx, event.AsNewMilestone(), ccBuilder); err != nil {
-					return err
+					return false, err
 				}
 			case EventTypeNewBlock:
 				if err = s.applyNewBlockOnTip(ctx, event.AsNewBlock(), ccBuilder); err != nil {
-					return err
+					return false, err
 				}
+				checkAge = true
 			case EventTypeNewBlockBatch:
 				if err = s.applyNewBlockBatchOnTip(ctx, event.AsNewBlockBatch(), ccBuilder); err != nil {
-					return err
+					return false, err
 				}
+				checkAge = true
 			case EventTypeNewBlockHashes:
 				if err = s.applyNewBlockHashesOnTip(ctx, event.AsNewBlockHashes(), ccBuilder); err != nil {
-					return err
+					return false, err
 				}
+				checkAge = true
 			default:
 				panic(fmt.Sprintf("unexpected event type: %v", event.Type))
+			}
+
+			// After processing block events (not milestones, which are finality metadata),
+			// check if we've fallen too far behind and need to switch to batch catch-up mode.
+			if checkAge && s.lastTipAge > catchUpAgeThreshold {
+				s.logger.Info(syncLogPrefix("node is behind, switching to catch-up mode"),
+					"tipAge", s.lastTipAge, "threshold", catchUpAgeThreshold)
+				return true, nil
 			}
 
 			lastProcessedEventTime = time.Now()
@@ -927,7 +977,7 @@ func (s *Sync) Run(ctx context.Context) error {
 
 			s.logger.Info(syncLogPrefix("waiting for chain tip events..."))
 		case <-ctx.Done():
-			return ctx.Err()
+			return false, ctx.Err()
 		}
 	}
 }

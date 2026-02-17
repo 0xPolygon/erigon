@@ -13,9 +13,7 @@ import (
 )
 
 // stubExecutionClient is a minimal no-op implementation of ExecutionClient for unit tests.
-type stubExecutionClient struct {
-	tipHash common.Hash
-}
+type stubExecutionClient struct{}
 
 func (s *stubExecutionClient) Prepare(context.Context) error { return nil }
 func (s *stubExecutionClient) InsertBlocks(context.Context, []*types.Block) error {

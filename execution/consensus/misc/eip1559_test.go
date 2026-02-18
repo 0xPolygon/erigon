@@ -343,14 +343,16 @@ func TestCalcBaseFeeDandeli(t *testing.T) {
 	}
 }
 
-// TestVerifyEip1559HeaderBaseFeeWithinBoundaries tests that post-Dandeli blocks enforce
-// a 5% boundary check on base fee changes to prevent excessive volatility
+// TestVerifyEip1559HeaderBaseFeeWithinBoundaries tests that post-Lisovo blocks enforce
+// a 5% boundary check on base fee changes to prevent excessive volatility.
+// Note: Dandeli introduced 65% gas target with strict validation; Lisovo added boundary validation.
 func TestVerifyEip1559HeaderBaseFeeWithinBoundaries(t *testing.T) {
 	t.Parallel()
 
 	testConfig := borConfig()
 	if borConfig, ok := testConfig.Bor.(*borcfg.BorConfig); ok {
 		borConfig.DandeliBlock = big.NewInt(20)
+		borConfig.LisovoBlock = big.NewInt(20)
 	} else {
 		t.Fatalf("Unable to load bor config for test")
 	}
@@ -455,13 +457,16 @@ func TestVerifyEip1559HeaderBaseFeeWithinBoundaries(t *testing.T) {
 	})
 }
 
-// TestBaseFeeValidationPreDandeli tests that base fee validation still works before Dandeli HF
+// TestBaseFeeValidationPreDandeli tests that base fee validation works correctly:
+// - Pre-Lisovo: strict validation (exact match required)
+// - Post-Lisovo: boundary validation (±5% cap)
 func TestBaseFeeValidationPreDandeli(t *testing.T) {
 	t.Parallel()
 
 	testConfig := borConfig()
 	if borConfig, ok := testConfig.Bor.(*borcfg.BorConfig); ok {
 		borConfig.DandeliBlock = big.NewInt(20)
+		borConfig.LisovoBlock = big.NewInt(20)
 	} else {
 		t.Fatalf("Unable to load bor config for test")
 	}
@@ -503,9 +508,9 @@ func TestBaseFeeValidationPreDandeli(t *testing.T) {
 		require.NoError(t, err, "should accept correct base fee pre-Dandeli")
 	})
 
-	t.Run("post-Dandeli: accepts base fee within 5% boundary", func(t *testing.T) {
+	t.Run("post-Lisovo: accepts base fee within 5% boundary", func(t *testing.T) {
 		parent := &types.Header{
-			Number:   big.NewInt(20), // Post-Dandeli
+			Number:   big.NewInt(20), // Post-Lisovo
 			GasLimit: 30_000_000,
 			GasUsed:  15_000_000,
 			BaseFee:  big.NewInt(1_000_000_000),
@@ -523,12 +528,12 @@ func TestBaseFeeValidationPreDandeli(t *testing.T) {
 		}
 
 		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
-		require.NoError(t, err, "should accept base fee within 5% boundary post-Dandeli")
+		require.NoError(t, err, "should accept base fee within 5% boundary post-Lisovo")
 	})
 
-	t.Run("post-Dandeli: rejects base fee exceeding 5% boundary", func(t *testing.T) {
+	t.Run("post-Lisovo: rejects base fee exceeding 5% boundary", func(t *testing.T) {
 		parent := &types.Header{
-			Number:   big.NewInt(20), // Post-Dandeli
+			Number:   big.NewInt(20), // Post-Lisovo
 			GasLimit: 30_000_000,
 			GasUsed:  15_000_000,
 			BaseFee:  big.NewInt(1_000_000_000),
@@ -546,7 +551,286 @@ func TestBaseFeeValidationPreDandeli(t *testing.T) {
 		}
 
 		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
-		require.Error(t, err, "should reject base fee exceeding 5% boundary post-Dandeli")
+		require.Error(t, err, "should reject base fee exceeding 5% boundary post-Lisovo")
 		require.Contains(t, err.Error(), "exceeds 5% limit", "error should mention 5% limit")
+	})
+}
+
+// TestVerifyBaseFeeWithinBoundariesLowFees tests header validation at very low base fees
+// where the 5% boundary calculation would round to 0, requiring the minimum 1 wei cap
+func TestVerifyBaseFeeWithinBoundariesLowFees(t *testing.T) {
+	t.Parallel()
+
+	testConfig := borConfig()
+	if borConfig, ok := testConfig.Bor.(*borcfg.BorConfig); ok {
+		borConfig.LisovoBlock = big.NewInt(20)
+	} else {
+		t.Fatalf("Unable to load bor config for test")
+	}
+
+	// Test multiple low base fee levels
+	testCases := []struct {
+		name          string
+		parentBaseFee int64
+		acceptBaseFee int64 // Should pass validation (within 1 wei)
+		rejectBaseFee int64 // Should fail validation (exceeds 1 wei)
+	}{
+		{"1 wei base fee", 1, 2, 3},                                      // 1→2 OK, 1→3 FAIL
+		{"10 wei base fee", 10, 11, 12},                                  // 10→11 OK, 10→12 FAIL
+		{"19 wei base fee", 19, 20, 21},                                  // 19→20 OK, 19→21 FAIL (still rounds to 0)
+		{"20 wei base fee", 20, 21, 23},                                  // 20→21 OK (5%=1), 20→23 FAIL
+		{"100 wei base fee", 100, 105, 106},                              // 100→105 OK (5%=5), 100→106 FAIL
+		{"1 gwei base fee", 1_000_000_000, 1_050_000_000, 1_060_000_000}, // Normal range
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			parent := &types.Header{
+				Number:   big.NewInt(20), // Post-Lisovo
+				GasLimit: 30_000_000,
+				GasUsed:  15_000_000,
+				BaseFee:  big.NewInt(tc.parentBaseFee),
+			}
+
+			// Test accepted case
+			headerAccept := &types.Header{
+				Number:   big.NewInt(21),
+				GasLimit: 30_000_000,
+				GasUsed:  20_000_000,
+				BaseFee:  big.NewInt(tc.acceptBaseFee),
+			}
+
+			err := VerifyEip1559Header(testConfig, parent, headerAccept, false /*skipGasLimit*/)
+			require.NoError(t, err, "should accept base fee within cap")
+
+			// Test rejected case
+			headerReject := &types.Header{
+				Number:   big.NewInt(21),
+				GasLimit: 30_000_000,
+				GasUsed:  20_000_000,
+				BaseFee:  big.NewInt(tc.rejectBaseFee),
+			}
+
+			err = VerifyEip1559Header(testConfig, parent, headerReject, false /*skipGasLimit*/)
+			require.Error(t, err, "should reject base fee exceeding cap")
+			require.Contains(t, err.Error(), "exceeds", "error should mention exceeds")
+		})
+	}
+}
+
+// TestLowBaseFeeEdgeCases tests critical edge cases for low base fee validation
+func TestLowBaseFeeEdgeCases(t *testing.T) {
+	t.Parallel()
+
+	testConfig := borConfig()
+	if borConfig, ok := testConfig.Bor.(*borcfg.BorConfig); ok {
+		borConfig.LisovoBlock = big.NewInt(20)
+	} else {
+		t.Fatalf("Unable to load bor config for test")
+	}
+
+	t.Run("zero base fee - no change", func(t *testing.T) {
+		parent := &types.Header{
+			Number:   big.NewInt(20), // Post-Lisovo
+			GasLimit: 30_000_000,
+			GasUsed:  15_000_000,
+			BaseFee:  big.NewInt(0),
+		}
+
+		header := &types.Header{
+			Number:   big.NewInt(21),
+			GasLimit: 30_000_000,
+			GasUsed:  20_000_000,
+			BaseFee:  big.NewInt(0), // No change
+		}
+
+		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+		require.NoError(t, err, "should accept unchanged zero base fee")
+	})
+
+	t.Run("zero base fee - increase by 1 wei", func(t *testing.T) {
+		parent := &types.Header{
+			Number:   big.NewInt(20), // Post-Lisovo
+			GasLimit: 30_000_000,
+			GasUsed:  15_000_000,
+			BaseFee:  big.NewInt(0),
+		}
+
+		header := &types.Header{
+			Number:   big.NewInt(21),
+			GasLimit: 30_000_000,
+			GasUsed:  20_000_000,
+			BaseFee:  big.NewInt(1), // Increase by 1 wei (within cap)
+		}
+
+		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+		require.NoError(t, err, "should accept 1 wei increase from zero")
+	})
+
+	t.Run("zero base fee - increase by 2 wei", func(t *testing.T) {
+		parent := &types.Header{
+			Number:   big.NewInt(20), // Post-Lisovo
+			GasLimit: 30_000_000,
+			GasUsed:  15_000_000,
+			BaseFee:  big.NewInt(0),
+		}
+
+		header := &types.Header{
+			Number:   big.NewInt(21),
+			GasLimit: 30_000_000,
+			GasUsed:  20_000_000,
+			BaseFee:  big.NewInt(2), // Increase by 2 wei (exceeds 1 wei cap)
+		}
+
+		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+		require.Error(t, err, "should reject 2 wei increase from zero")
+	})
+
+	t.Run("exactly 20 wei - 5% boundary", func(t *testing.T) {
+		// At 20 wei, 5% = 1 wei naturally (no rounding)
+		parent := &types.Header{
+			Number:   big.NewInt(20), // Post-Lisovo
+			GasLimit: 30_000_000,
+			GasUsed:  15_000_000,
+			BaseFee:  big.NewInt(20),
+		}
+
+		header := &types.Header{
+			Number:   big.NewInt(21),
+			GasLimit: 30_000_000,
+			GasUsed:  20_000_000,
+			BaseFee:  big.NewInt(21), // Exactly 1 wei increase (5%)
+		}
+
+		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+		require.NoError(t, err, "should accept exactly 5% at 20 wei")
+	})
+
+	t.Run("base fee decrease at low level", func(t *testing.T) {
+		parent := &types.Header{
+			Number:   big.NewInt(20), // Post-Lisovo
+			GasLimit: 30_000_000,
+			GasUsed:  15_000_000,
+			BaseFee:  big.NewInt(10),
+		}
+
+		header := &types.Header{
+			Number:   big.NewInt(21),
+			GasLimit: 30_000_000,
+			GasUsed:  20_000_000,
+			BaseFee:  big.NewInt(9), // Decrease by 1 wei (within cap)
+		}
+
+		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+		require.NoError(t, err, "should accept 1 wei decrease")
+	})
+
+	t.Run("consecutive blocks of growth from 1 wei", func(t *testing.T) {
+		// Simulate multiple blocks growing from 1 wei
+		prevBaseFee := int64(1)
+
+		for i := 0; i < 5; i++ {
+			parent := &types.Header{
+				Number:   big.NewInt(20 + int64(i)),
+				GasLimit: 30_000_000,
+				GasUsed:  15_000_000,
+				BaseFee:  big.NewInt(prevBaseFee),
+			}
+
+			header := &types.Header{
+				Number:   big.NewInt(21 + int64(i)),
+				GasLimit: 30_000_000,
+				GasUsed:  20_000_000,
+				BaseFee:  big.NewInt(prevBaseFee + 1), // Grow by 1 wei each block
+			}
+
+			err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+			require.NoError(t, err, fmt.Sprintf("should accept block %d growth", i+1))
+
+			prevBaseFee++
+		}
+	})
+}
+
+// TestLowBaseFeesPreLisovo ensures that pre-Lisovo blocks still use strict validation
+// and are not affected by the boundary check or minimum 1 wei cap
+func TestLowBaseFeesPreLisovo(t *testing.T) {
+	t.Parallel()
+
+	testConfig := borConfig()
+	if borConfig, ok := testConfig.Bor.(*borcfg.BorConfig); ok {
+		borConfig.LisovoBlock = big.NewInt(20)
+	} else {
+		t.Fatalf("Unable to load bor config for test")
+	}
+
+	t.Run("pre-Lisovo strict validation at low fees", func(t *testing.T) {
+		parent := &types.Header{
+			Number:   big.NewInt(10), // Pre-Lisovo (Lisovo at block 20)
+			GasLimit: 30_000_000,
+			GasUsed:  15_000_000,
+			BaseFee:  big.NewInt(10),
+		}
+
+		calculatedBaseFee := CalcBaseFee(testConfig, parent)
+
+		// Even 1 wei deviation should fail pre-Lisovo
+		incorrectBaseFee := new(big.Int).Add(calculatedBaseFee, big.NewInt(1))
+
+		header := &types.Header{
+			Number:   big.NewInt(11),
+			GasLimit: 30_000_000,
+			GasUsed:  20_000_000,
+			BaseFee:  incorrectBaseFee,
+		}
+
+		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+		require.Error(t, err, "should reject even 1 wei deviation pre-Lisovo")
+		require.Contains(t, err.Error(), "invalid baseFee", "error should mention invalid baseFee")
+	})
+
+	t.Run("pre-Lisovo accepts correct base fee", func(t *testing.T) {
+		parent := &types.Header{
+			Number:   big.NewInt(10), // Pre-Lisovo
+			GasLimit: 30_000_000,
+			GasUsed:  15_000_000,
+			BaseFee:  big.NewInt(10),
+		}
+
+		calculatedBaseFee := CalcBaseFee(testConfig, parent)
+
+		header := &types.Header{
+			Number:   big.NewInt(11),
+			GasLimit: 30_000_000,
+			GasUsed:  20_000_000,
+			BaseFee:  calculatedBaseFee, // Exact match required
+		}
+
+		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+		require.NoError(t, err, "should accept correct base fee pre-Lisovo")
+	})
+
+	t.Run("post-Lisovo allows 1 wei deviation", func(t *testing.T) {
+		parent := &types.Header{
+			Number:   big.NewInt(20), // Post-Lisovo
+			GasLimit: 30_000_000,
+			GasUsed:  15_000_000,
+			BaseFee:  big.NewInt(10),
+		}
+
+		calculatedBaseFee := CalcBaseFee(testConfig, parent)
+
+		// 1 wei deviation should be accepted post-Lisovo (boundary check)
+		deviatedBaseFee := new(big.Int).Add(calculatedBaseFee, big.NewInt(1))
+
+		header := &types.Header{
+			Number:   big.NewInt(21),
+			GasLimit: 30_000_000,
+			GasUsed:  20_000_000,
+			BaseFee:  deviatedBaseFee,
+		}
+
+		err := VerifyEip1559Header(testConfig, parent, header, false /*skipGasLimit*/)
+		require.NoError(t, err, "should accept 1 wei deviation post-Lisovo")
 	})
 }

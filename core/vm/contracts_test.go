@@ -33,6 +33,8 @@ import (
 	"github.com/erigontech/erigon-lib/common"
 	"github.com/erigontech/erigon-lib/common/hexutil"
 	"github.com/erigontech/erigon-lib/common/math"
+	"github.com/erigontech/erigon/execution/chain"
+	"github.com/erigontech/erigon/execution/chain/params"
 )
 
 // precompiledTest defines the input/output pairs for precompiled contract tests.
@@ -485,4 +487,75 @@ func TestPrecompiledP256Verify(t *testing.T) {
 	t.Parallel()
 	testJson("p256Verify", "100", t)
 	testJson("p256Verify-EIP-7951", "a100", t)
+}
+
+// TestLisovoP256VerifyGasCost verifies P256 precompile gas cost changes at Lisovo
+func TestLisovoP256VerifyGasCost(t *testing.T) {
+	preLisovo := &p256Verify{eip7951: false}
+	postLisovo := &p256Verify{eip7951: true}
+
+	preGas := preLisovo.RequiredGas(nil)
+	postGas := postLisovo.RequiredGas(nil)
+
+	if preGas != params.P256VerifyGas {
+		t.Errorf("pre-Lisovo gas: got %d, want %d", preGas, params.P256VerifyGas)
+	}
+	if postGas != params.P256VerifyGasEIP7951 {
+		t.Errorf("post-Lisovo gas: got %d, want %d", postGas, params.P256VerifyGasEIP7951)
+	}
+	if preGas >= postGas {
+		t.Errorf("post-Lisovo gas (%d) should be higher than pre-Lisovo (%d)", postGas, preGas)
+	}
+}
+
+// TestLisovoCLZOpcode verifies CLZ opcode availability at Lisovo.
+func TestLisovoCLZOpcode(t *testing.T) {
+	preLisovo := newBhilaiInstructionSet()
+	postLisovo := newLisovoInstructionSet()
+
+	// Pre-Lisovo: CLZ should be undefined.
+	if preLisovo[CLZ].execute != nil && preLisovo[CLZ].constantGas != 0 {
+		t.Error("CLZ opcode should not be defined pre-Lisovo")
+	}
+
+	// Post-Lisovo: CLZ should be defined.
+	if postLisovo[CLZ].execute == nil {
+		t.Error("CLZ opcode should be defined post-Lisovo")
+	}
+	if postLisovo[CLZ].constantGas != GasFastStep {
+		t.Errorf("CLZ gas: got %d, want %d", postLisovo[CLZ].constantGas, GasFastStep)
+	}
+}
+
+// TestPointEvaluationPrecompileRemoval verifies that the pointEvaluation (KZG) precompile
+// is present before LisovoPro and removed starting with LisovoPro.
+func TestPointEvaluationPrecompileRemoval(t *testing.T) {
+	t.Parallel()
+
+	pointEvaluationAddr := common.BytesToAddress([]byte{0x0a})
+
+	// Test Lisovo: should have pointEvaluation
+	lisovoRules := &chain.Rules{
+		IsLisovo:       true,
+		IsMadhugiriPro: true,
+		IsMadhugiri:    true,
+		IsBhilai:       true,
+	}
+	lisovoPrecompiles := Precompiles(lisovoRules)
+	if _, exists := lisovoPrecompiles[pointEvaluationAddr]; !exists {
+		t.Error("pointEvaluation (0x0a) should exist in Lisovo precompiles")
+	}
+
+	// Test LisovoPro: should not have pointEvaluation
+	lisovoProRules := &chain.Rules{
+		IsLisovoPro:    true,
+		IsLisovo:       true,
+		IsMadhugiriPro: true,
+		IsMadhugiri:    true,
+		IsBhilai:       true,
+	}
+	lisovoProPrecompiles := Precompiles(lisovoProRules)
+	if _, exists := lisovoProPrecompiles[pointEvaluationAddr]; exists {
+		t.Error("pointEvaluation (0x0a) should not exist in LisovoPro precompiles")
+	}
 }

@@ -167,6 +167,8 @@ var (
 			RioBlock:          big.NewInt(0),
 			MadhugiriBlock:    big.NewInt(0),
 			MadhugiriProBlock: big.NewInt(0),
+			LisovoBlock:       big.NewInt(0),
+			LisovoProBlock:    big.NewInt(0),
 		},
 	}
 
@@ -213,6 +215,10 @@ type BorConfig interface {
 	IsMadhugiriPro(num uint64) bool
 	GetMadhugiriBlock() *big.Int
 	GetMadhugiriProBlock() *big.Int
+	IsLisovo(num uint64) bool
+	IsLisovoPro(num uint64) bool
+	GetLisovoBlock() *big.Int
+	GetLisovoProBlock() *big.Int
 	StateReceiverContractAddress() common.Address
 	CalculateSprintNumber(number uint64) uint64
 	CalculateSprintLength(number uint64) uint64
@@ -231,7 +237,7 @@ func (c *Config) String() string {
 	engine := c.getEngine()
 
 	if c.Bor != nil {
-		return fmt.Sprintf("{ChainID: %v, Agra: %v, Napoli: %v, Ahmedabad: %v, Bhilai: %v, Rio: %v, Madhugiri: %v, MadhugiriPro: %v, Engine: %v}",
+		return fmt.Sprintf("{ChainID: %v, Agra: %v, Napoli: %v, Ahmedabad: %v, Bhilai: %v, Rio: %v, Madhugiri: %v, MadhugiriPro: %v, Lisovo: %v, LisovoPro: %v, Engine: %v}",
 			c.ChainID,
 			c.Bor.GetAgraBlock(),
 			c.Bor.GetNapoliBlock(),
@@ -240,6 +246,8 @@ func (c *Config) String() string {
 			c.Bor.GetRioBlock(),
 			c.Bor.GetMadhugiriBlock(),
 			c.Bor.GetMadhugiriProBlock(),
+			c.Bor.GetLisovoBlock(),
+			c.Bor.GetLisovoProBlock(),
 			engine,
 		)
 	}
@@ -378,6 +386,14 @@ func (c *Config) IsMadhugiri(num uint64) bool {
 // IsMadhugiriPro returns whether num is either equal to the MadhugiriPro fork block or greater.
 func (c *Config) IsMadhugiriPro(num uint64) bool {
 	return (c != nil) && (c.Bor != nil) && c.Bor.IsMadhugiriPro(num)
+}
+
+func (c *Config) IsLisovo(num uint64) bool {
+	return (c != nil) && (c.Bor != nil) && c.Bor.IsLisovo(num)
+}
+
+func (c *Config) IsLisovoPro(num uint64) bool {
+	return (c != nil) && (c.Bor != nil) && c.Bor.IsLisovoPro(num)
 }
 
 // IsCancun returns whether time is either equal to the Cancun fork time or greater.
@@ -757,6 +773,8 @@ type Rules struct {
 	IsIstanbul, IsBerlin, IsLondon, IsShanghai                       bool
 	IsCancun, IsNapoli, IsBhilai, IsRio, IsMadhugiri, IsMadhugiriPro bool
 	IsPrague, IsOsaka                                                bool
+	IsLisovo                                                         bool
+	IsLisovoPro                                                      bool
 	IsAura                                                           bool
 }
 

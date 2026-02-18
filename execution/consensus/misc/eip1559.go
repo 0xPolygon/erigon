@@ -63,10 +63,11 @@ func VerifyEip1559Header(config *chain.Config, parent, header *types.Header, ski
 		return errors.New("header is missing baseFee")
 	}
 
-	// After Dandeli hard fork, base fee validation is replaced by a boundary check to allow
-	// dynamic base fee setting while preventing excessive volatility (max 5% change per block)
+	// After Lisovo hard fork, base fee validation is replaced by a boundary check to allow
+	// dynamic base fee setting while preventing excessive volatility (max 5% change per block).
+	// Dandeli introduced 65% gas target but kept strict validation; Lisovo enables boundary validation.
 	if borConfig, ok := config.Bor.(*borcfg.BorConfig); ok {
-		if borConfig.IsDandeli(header.Number.Uint64()) {
+		if borConfig.IsLisovo(header.Number.Uint64()) {
 			return verifyBaseFeeWithinBoundaries(parent, header)
 		}
 	}
@@ -88,6 +89,13 @@ func verifyBaseFeeWithinBoundaries(parent, header *types.Header) error {
 	// Calculate the maximum allowed change (MaxBaseFeeChangePercent of parent base fee)
 	maxAllowedChange := new(big.Int).Mul(parent.BaseFee, big.NewInt(MaxBaseFeeChangePercent))
 	maxAllowedChange.Div(maxAllowedChange, big.NewInt(100))
+
+	// Ensure minimum 1 wei cap to prevent unlimited growth at very low base fees.
+	// When percentage calculation rounds to 0 (baseFee < 20 wei), this ensures
+	// there's still an absolute cap of 1 wei per block change.
+	if maxAllowedChange.Cmp(common.Big1) < 0 {
+		maxAllowedChange = new(big.Int).Set(common.Big1)
+	}
 
 	// Calculate the actual change in base fee
 	actualChange := new(big.Int)

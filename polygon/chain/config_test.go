@@ -55,6 +55,15 @@ func TestGetBurntContract(t *testing.T) {
 	addr = BorMainnet.Config.GetBurntContract(50523000 + 1)
 	require.NotNil(t, addr)
 	assert.Equal(t, common.HexToAddress("0x7A8ed27F4C30512326878652d20fC85727401854"), *addr)
+	addr = BorMainnet.Config.GetBurntContract(83756500 - 1)
+	require.NotNil(t, addr)
+	assert.Equal(t, common.HexToAddress("0x7A8ed27F4C30512326878652d20fC85727401854"), *addr)
+	addr = BorMainnet.Config.GetBurntContract(83756500)
+	require.NotNil(t, addr)
+	assert.Equal(t, common.HexToAddress("0x3ef57def668054dd750bd260526105c4eeef104f"), *addr)
+	addr = BorMainnet.Config.GetBurntContract(83756500 + 1)
+	require.NotNil(t, addr)
+	assert.Equal(t, common.HexToAddress("0x3ef57def668054dd750bd260526105c4eeef104f"), *addr)
 
 	// Amoy
 	addr = Amoy.Config.GetBurntContract(0)

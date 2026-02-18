@@ -60,6 +60,10 @@ type PrecompiledContract interface {
 
 func Precompiles(chainRules *chain.Rules) map[common.Address]PrecompiledContract {
 	switch {
+	case chainRules.IsLisovoPro:
+		return PrecompiledContractsLisovoPro
+	case chainRules.IsLisovo:
+		return PrecompiledContractsLisovo
 	case chainRules.IsMadhugiriPro:
 		return PrecompiledContractsMadhugiriPro
 	case chainRules.IsMadhugiri:
@@ -191,7 +195,6 @@ var PrecompiledContractsPrague = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{0x07}): &bn254ScalarMulIstanbul{},
 	common.BytesToAddress([]byte{0x08}): &bn254PairingIstanbul{},
 	common.BytesToAddress([]byte{0x09}): &blake2F{},
-	common.BytesToAddress([]byte{0x0a}): &pointEvaluation{},
 	common.BytesToAddress([]byte{0x0b}): &bls12381G1Add{},
 	common.BytesToAddress([]byte{0x0c}): &bls12381G1MultiExp{},
 	common.BytesToAddress([]byte{0x0d}): &bls12381G2Add{},
@@ -232,7 +235,6 @@ var PrecompiledContractsMadhugiri = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{0x07}): &bn254ScalarMulIstanbul{},
 	common.BytesToAddress([]byte{0x08}): &bn254PairingIstanbul{},
 	common.BytesToAddress([]byte{0x09}): &blake2F{},
-	common.BytesToAddress([]byte{0x0a}): &pointEvaluation{},
 	common.BytesToAddress([]byte{0x0b}): &bls12381G1Add{},
 	common.BytesToAddress([]byte{0x0c}): &bls12381G1MultiExp{},
 	common.BytesToAddress([]byte{0x0d}): &bls12381G2Add{},
@@ -252,7 +254,6 @@ var PrecompiledContractsMadhugiriPro = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{0x07}):       &bn254ScalarMulIstanbul{},
 	common.BytesToAddress([]byte{0x08}):       &bn254PairingIstanbul{},
 	common.BytesToAddress([]byte{0x09}):       &blake2F{},
-	common.BytesToAddress([]byte{0x0a}):       &pointEvaluation{},
 	common.BytesToAddress([]byte{0x0b}):       &bls12381G1Add{},
 	common.BytesToAddress([]byte{0x0c}):       &bls12381G1MultiExp{},
 	common.BytesToAddress([]byte{0x0d}):       &bls12381G2Add{},
@@ -263,7 +264,54 @@ var PrecompiledContractsMadhugiriPro = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{0x01, 0x00}): &p256Verify{eip7951: false},
 }
 
+// PrecompiledContractsLisovo contains the set of pre-compiled Ethereum
+// contracts used in the Lisovo release (bor HF).
+var PrecompiledContractsLisovo = map[common.Address]PrecompiledContract{
+	common.BytesToAddress([]byte{0x01}):       &ecrecover{},
+	common.BytesToAddress([]byte{0x02}):       &sha256hash{},
+	common.BytesToAddress([]byte{0x03}):       &ripemd160hash{},
+	common.BytesToAddress([]byte{0x04}):       &dataCopy{},
+	common.BytesToAddress([]byte{0x05}):       &bigModExp{madhugiri: true},
+	common.BytesToAddress([]byte{0x06}):       &bn254AddIstanbul{},
+	common.BytesToAddress([]byte{0x07}):       &bn254ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{0x08}):       &bn254PairingIstanbul{},
+	common.BytesToAddress([]byte{0x09}):       &blake2F{},
+	common.BytesToAddress([]byte{0x0a}):       &pointEvaluation{},
+	common.BytesToAddress([]byte{0x0b}):       &bls12381G1Add{},
+	common.BytesToAddress([]byte{0x0c}):       &bls12381G1MultiExp{},
+	common.BytesToAddress([]byte{0x0d}):       &bls12381G2Add{},
+	common.BytesToAddress([]byte{0x0e}):       &bls12381G2MultiExp{},
+	common.BytesToAddress([]byte{0x0f}):       &bls12381Pairing{},
+	common.BytesToAddress([]byte{0x10}):       &bls12381MapFpToG1{},
+	common.BytesToAddress([]byte{0x11}):       &bls12381MapFp2ToG2{},
+	common.BytesToAddress([]byte{0x01, 0x00}): &p256Verify{eip7951: true},
+}
+
+// PrecompiledContractsLisovoPro contains the set of pre-compiled Ethereum
+// contracts used in the LisovoPro release (bor HF).
+var PrecompiledContractsLisovoPro = map[common.Address]PrecompiledContract{
+	common.BytesToAddress([]byte{0x01}):       &ecrecover{},
+	common.BytesToAddress([]byte{0x02}):       &sha256hash{},
+	common.BytesToAddress([]byte{0x03}):       &ripemd160hash{},
+	common.BytesToAddress([]byte{0x04}):       &dataCopy{},
+	common.BytesToAddress([]byte{0x05}):       &bigModExp{madhugiri: true},
+	common.BytesToAddress([]byte{0x06}):       &bn254AddIstanbul{},
+	common.BytesToAddress([]byte{0x07}):       &bn254ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{0x08}):       &bn254PairingIstanbul{},
+	common.BytesToAddress([]byte{0x09}):       &blake2F{},
+	common.BytesToAddress([]byte{0x0b}):       &bls12381G1Add{},
+	common.BytesToAddress([]byte{0x0c}):       &bls12381G1MultiExp{},
+	common.BytesToAddress([]byte{0x0d}):       &bls12381G2Add{},
+	common.BytesToAddress([]byte{0x0e}):       &bls12381G2MultiExp{},
+	common.BytesToAddress([]byte{0x0f}):       &bls12381Pairing{},
+	common.BytesToAddress([]byte{0x10}):       &bls12381MapFpToG1{},
+	common.BytesToAddress([]byte{0x11}):       &bls12381MapFp2ToG2{},
+	common.BytesToAddress([]byte{0x01, 0x00}): &p256Verify{eip7951: true},
+}
+
 var (
+	PrecompiledAddressesLisovoPro    []common.Address
+	PrecompiledAddressesLisovo       []common.Address
 	PrecompiledAddressesMadhugiriPro []common.Address
 	PrecompiledAddressesMadhugiri    []common.Address
 	PrecompiledAddressesOsaka        []common.Address
@@ -311,11 +359,21 @@ func init() {
 	for k := range PrecompiledContractsMadhugiriPro {
 		PrecompiledAddressesMadhugiriPro = append(PrecompiledAddressesMadhugiriPro, k)
 	}
+	for k := range PrecompiledContractsLisovo {
+		PrecompiledAddressesLisovo = append(PrecompiledAddressesLisovo, k)
+	}
+	for k := range PrecompiledContractsLisovoPro {
+		PrecompiledAddressesLisovoPro = append(PrecompiledAddressesLisovoPro, k)
+	}
 }
 
 // ActivePrecompiles returns the precompiles enabled with the current configuration.
 func ActivePrecompiles(rules *chain.Rules) []common.Address {
 	switch {
+	case rules.IsLisovoPro:
+		return PrecompiledAddressesLisovoPro
+	case rules.IsLisovo:
+		return PrecompiledAddressesLisovo
 	case rules.IsMadhugiriPro:
 		return PrecompiledAddressesMadhugiriPro
 	case rules.IsMadhugiri:

@@ -521,6 +521,7 @@ func (s *Sync) applyNewBlockBatchOnTip(ctx context.Context, event EventNewBlockB
 				return ctx.Err()
 			case event.Processed <- err:
 			}
+			err = nil
 		}
 		return nil
 	}

@@ -18,6 +18,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -264,12 +265,20 @@ func (c TipEventsCompositeChannel) Events() <-chan Event {
 	return c.events
 }
 
+var errEventDropped = errors.New("event dropped: p2p event queue full")
+
 func (c TipEventsCompositeChannel) PushEvent(e Event) {
 	switch e.Topic() {
 	case EventTopicHeimdall:
 		c.heimdallEventsChannel.PushEvent(e)
 	case EventTopicP2P:
-		c.p2pEventsChannel.PushEvent(e)
+		dropped := c.p2pEventsChannel.PushEvent(e)
+		if dropped != nil && dropped.Type == EventTypeNewBlockBatch {
+			processedC := dropped.newBlockBatch.Processed
+			go func() {
+				processedC <- errEventDropped
+			}()
+		}
 	default:
 		panic(fmt.Sprintf("unsupported topic in tip events composite channel: %s", e.Topic()))
 	}

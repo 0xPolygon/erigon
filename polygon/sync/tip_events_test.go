@@ -80,6 +80,38 @@ func TestTipEventsCompositeChannel(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+func TestTipEventsCompositeChannelDroppedNewBlockBatchSignalsProcessed(t *testing.T) {
+	t.Parallel()
+
+	heimdallEvents := NewEventChannel[Event](3)
+	p2pEvents := NewEventChannel[Event](1) // capacity 1 so the second NewBlockBatch evicts the first
+	ch := NewTipEventsCompositeChannel(heimdallEvents, p2pEvents)
+
+	processedC1 := make(chan error, 1)
+	ch.PushEvent(Event{
+		Type: EventTypeNewBlockBatch,
+		newBlockBatch: EventNewBlockBatch{
+			Processed: processedC1,
+		},
+	})
+
+	processedC2 := make(chan error, 1)
+	// pushing a second NewBlockBatch evicts the first; processedC1 must be signalled
+	ch.PushEvent(Event{
+		Type: EventTypeNewBlockBatch,
+		newBlockBatch: EventNewBlockBatch{
+			Processed: processedC2,
+		},
+	})
+
+	select {
+	case err := <-processedC1:
+		require.ErrorIs(t, err, errEventDropped)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for dropped NewBlockBatch Processed signal")
+	}
+}
+
 func read(ctx context.Context, t *testing.T, ch <-chan Event) Event {
 	select {
 	case e := <-ch:

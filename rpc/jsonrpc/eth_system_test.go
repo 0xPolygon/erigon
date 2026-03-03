@@ -80,6 +80,7 @@ func TestGasPrice(t *testing.T) {
 
 }
 
+// run with -update flag to regenerate the go test ./rpc/jsonrpc/ -run TestEthConfig -update
 func TestEthConfig(t *testing.T) {
 	t.Parallel()
 	toTimeArg := func(t hexutil.Uint64) *hexutil.Uint64 { return &t }

@@ -166,8 +166,8 @@ func TestCreation(t *testing.T) {
 			polychain.Amoy,
 			[]testcase{
 				{0, 0, ID{Hash: ChecksumToBytes(0xbe06a477), Activation: 0, Next: 73100}},
-				{73100, 0, ID{Hash: ChecksumToBytes(0x135d2cd5), Activation: 73100, Next: 5423600}},       // First London, Jaipur, Delhi, Indore, Agra
-				{5423600, 0, ID{Hash: ChecksumToBytes(0xb4f6ec4f), Activation: 5423600, Next: 11865856}},  // First Napoli block
+				{73100, 0, ID{Hash: ChecksumToBytes(0x135d2cd5), Activation: 73100, Next: 5423600}},        // First London, Jaipur, Delhi, Indore, Agra
+				{5423600, 0, ID{Hash: ChecksumToBytes(0xb4f6ec4f), Activation: 5423600, Next: 11865856}},   // First Napoli block
 				{11865856, 0, ID{Hash: ChecksumToBytes(0x331eb7af), Activation: 11865856, Next: 22765056}}, // First Ahmedabad block
 				{22765056, 0, ID{Hash: ChecksumToBytes(0xd0ad2c34), Activation: 22765056, Next: 26272256}}, // First Bhilai block
 				{26272256, 0, ID{Hash: ChecksumToBytes(0x6928e294), Activation: 26272256, Next: 28899616}}, // First Rio block

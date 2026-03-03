@@ -215,6 +215,8 @@ type BorConfig interface {
 	IsMadhugiriPro(num uint64) bool
 	GetMadhugiriBlock() *big.Int
 	GetMadhugiriProBlock() *big.Int
+	IsDandeli(num uint64) bool
+	GetDandeliBlock() *big.Int
 	IsLisovo(num uint64) bool
 	IsLisovoPro(num uint64) bool
 	GetLisovoBlock() *big.Int

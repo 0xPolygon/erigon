@@ -54,8 +54,8 @@ import (
 // EthAPI is a collection of functions that are exposed in the
 type EthAPI interface {
 	// Block related (proposed file: ./eth_blocks.go)
-	GetBlockByNumber(ctx context.Context, number rpc.BlockNumber, fullTx bool) (map[string]interface{}, error)
-	GetBlockByHash(ctx context.Context, hash rpc.BlockNumberOrHash, fullTx bool) (map[string]interface{}, error)
+	GetBlockByNumber(ctx context.Context, number rpc.BlockNumber, fullTx bool, borExtra *bool) (map[string]interface{}, error)
+	GetBlockByHash(ctx context.Context, hash rpc.BlockNumberOrHash, fullTx bool, borExtra *bool) (map[string]interface{}, error)
 	GetBlockTransactionCountByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*hexutil.Uint, error)
 	GetBlockTransactionCountByHash(ctx context.Context, blockHash common.Hash) (*hexutil.Uint, error)
 

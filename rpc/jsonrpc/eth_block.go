@@ -31,7 +31,9 @@ import (
 	"github.com/erigontech/erigon/core/state"
 	"github.com/erigontech/erigon/core/vm"
 	"github.com/erigontech/erigon/db/kv"
+	"github.com/erigontech/erigon/execution/rlp"
 	"github.com/erigontech/erigon/execution/types"
+	"github.com/erigontech/erigon/polygon/bor"
 	bortypes "github.com/erigontech/erigon/polygon/bor/types"
 	"github.com/erigontech/erigon/rpc"
 	"github.com/erigontech/erigon/rpc/ethapi"
@@ -208,7 +210,8 @@ func (api *APIImpl) CallBundle(ctx context.Context, txHashes []common.Hash, stat
 }
 
 // GetBlockByNumber implements eth_getBlockByNumber. Returns information about a block given the block's number.
-func (api *APIImpl) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber, fullTx bool) (map[string]interface{}, error) {
+// The optional borExtra parameter, when true, includes parsed blockExtraData (gas params, tx dependencies) in the response.
+func (api *APIImpl) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber, fullTx bool, borExtra *bool) (map[string]interface{}, error) {
 	tx, err := api.db.BeginTemporalRo(ctx)
 	if err != nil {
 		return nil, err
@@ -251,11 +254,16 @@ func (api *APIImpl) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber
 		}
 	}
 
+	if err == nil && borExtra != nil && *borExtra {
+		addBorBlockExtraData(response, b.Header())
+	}
+
 	return response, err
 }
 
 // GetBlockByHash implements eth_getBlockByHash. Returns information about a block given the block's hash.
-func (api *APIImpl) GetBlockByHash(ctx context.Context, numberOrHash rpc.BlockNumberOrHash, fullTx bool) (map[string]interface{}, error) {
+// The optional borExtra parameter, when true, includes parsed blockExtraData (gas params, tx dependencies) in the response.
+func (api *APIImpl) GetBlockByHash(ctx context.Context, numberOrHash rpc.BlockNumberOrHash, fullTx bool, borExtra *bool) (map[string]interface{}, error) {
 	if numberOrHash.BlockHash == nil {
 		// some web3.js based apps (like ethstats client) for some reason call
 		// eth_getBlockByHash with a block number as a parameter
@@ -263,7 +271,7 @@ func (api *APIImpl) GetBlockByHash(ctx context.Context, numberOrHash rpc.BlockNu
 		if numberOrHash.BlockNumber == nil {
 			return nil, nil // not error, see https://github.com/erigontech/erigon/issues/1645
 		}
-		return api.GetBlockByNumber(ctx, *numberOrHash.BlockNumber, fullTx)
+		return api.GetBlockByNumber(ctx, *numberOrHash.BlockNumber, fullTx, borExtra)
 	}
 
 	hash := *numberOrHash.BlockHash
@@ -310,6 +318,10 @@ func (api *APIImpl) GetBlockByHash(ctx context.Context, numberOrHash rpc.BlockNu
 		for _, field := range []string{"hash", "nonce", "miner"} {
 			response[field] = nil
 		}
+	}
+
+	if err == nil && borExtra != nil && *borExtra {
+		addBorBlockExtraData(response, block.Header())
 	}
 
 	return response, err
@@ -442,4 +454,41 @@ func (api *APIImpl) blockByNumber(ctx context.Context, number rpc.BlockNumber, t
 	}
 
 	return api.blockByRPCNumber(ctx, number, tx)
+}
+
+// RPCBlockExtraData contains parsed fields from the Bor block header's Extra field.
+type RPCBlockExtraData struct {
+	GasTarget                *hexutil.Uint64 `json:"gasTarget"`
+	BaseFeeChangeDenominator *hexutil.Uint64 `json:"baseFeeChangeDenominator"`
+	TxDependency             [][]int         `json:"txDependency"`
+}
+
+// addBorBlockExtraData parses the RLP-encoded BlockExtraData from the header's Extra field
+// and adds it to the response map. Silently does nothing for blocks without valid extra data.
+func addBorBlockExtraData(response map[string]interface{}, header *types.Header) {
+	if len(header.Extra) < types.ExtraVanityLength+types.ExtraSealLength {
+		return
+	}
+
+	var blockExtraData bor.BlockExtraData
+	if err := rlp.DecodeBytes(
+		header.Extra[types.ExtraVanityLength:len(header.Extra)-types.ExtraSealLength],
+		&blockExtraData,
+	); err != nil {
+		return
+	}
+
+	extra := &RPCBlockExtraData{
+		TxDependency: blockExtraData.TxDependencies,
+	}
+	if blockExtraData.GasTarget != nil {
+		v := hexutil.Uint64(*blockExtraData.GasTarget)
+		extra.GasTarget = &v
+	}
+	if blockExtraData.BaseFeeChangeDenominator != nil {
+		v := hexutil.Uint64(*blockExtraData.BaseFeeChangeDenominator)
+		extra.BaseFeeChangeDenominator = &v
+	}
+
+	response["blockExtraData"] = extra
 }

@@ -56,11 +56,11 @@ func TestNotFoundMustReturnNil(t *testing.T) {
 	require.Nil(d)
 	require.NoError(err)
 
-	e, err := api.GetBlockByHash(ctx, rpc.BlockNumberOrHashWithHash(common.Hash{}, true), false)
+	e, err := api.GetBlockByHash(ctx, rpc.BlockNumberOrHashWithHash(common.Hash{}, true), false, nil)
 	require.Nil(e)
 	require.NoError(err)
 
-	f, err := api.GetBlockByNumber(ctx, 10_000, false)
+	f, err := api.GetBlockByNumber(ctx, 10_000, false, nil)
 	require.Nil(f)
 	require.NoError(err)
 

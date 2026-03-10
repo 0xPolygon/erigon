@@ -34,7 +34,7 @@ func checkTime(
 	seconds int,
 	ethAPI EthAPI,
 ) error {
-	i, err := ethAPI.GetBlockByNumber(r.Context(), rpc.LatestBlockNumber, false)
+	i, err := ethAPI.GetBlockByNumber(r.Context(), rpc.LatestBlockNumber, false, nil)
 	if err != nil {
 		return err
 	}

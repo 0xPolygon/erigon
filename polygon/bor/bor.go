@@ -580,6 +580,12 @@ func (c *Bor) verifyCascadingFields(chain consensus.ChainHeaderReader, header *t
 		return errInvalidTimestamp
 	}
 
+	if c.config.IsGiugliano(number) {
+		if err := verifyGiuglianoExtraData(header); err != nil {
+			return err
+		}
+	}
+
 	return ValidateHeaderGas(header, parent, chain.Config())
 }
 
@@ -612,6 +618,28 @@ func ValidateHeaderGas(header *types.Header, parent *types.Header, chainConfig *
 		return err
 	}
 
+	return nil
+}
+
+// verifyGiuglianoExtraData checks that post-Giugliano blocks contain GasTarget
+// and BaseFeeChangeDenominator in the block's extra data.
+func verifyGiuglianoExtraData(header *types.Header) error {
+	if len(header.Extra) < types.ExtraVanityLength+types.ExtraSealLength {
+		return fmt.Errorf("header extra too short for Giugliano validation")
+	}
+
+	var blockExtraData BlockExtraData
+	if err := rlp.DecodeBytes(
+		header.Extra[types.ExtraVanityLength:len(header.Extra)-types.ExtraSealLength],
+		&blockExtraData,
+	); err != nil {
+		return fmt.Errorf("failed to decode block extra data: %w", err)
+	}
+
+	if blockExtraData.GasTarget == nil || blockExtraData.BaseFeeChangeDenominator == nil {
+		return fmt.Errorf("post-Giugliano block %d missing GasTarget or BaseFeeChangeDenominator in extra data",
+			header.Number.Uint64())
+	}
 	return nil
 }
 
@@ -721,6 +749,9 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, _
 				ValidatorBytes: tempValidatorBytes,
 				TxDependencies: nil,
 			}
+			// Note: post-Giugliano, block producers embed GasTarget and BaseFeeChangeDenominator
+			// in BlockExtraData. Since erigon does not produce blocks, we don't populate those
+			// fields here. They are decoded and validated from imported blocks instead.
 
 			blockExtraDataBytes, err := rlp.EncodeToBytes(blockExtraData)
 			if err != nil {
@@ -739,6 +770,9 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, _
 			ValidatorBytes: nil,
 			TxDependencies: nil,
 		}
+		// Note: post-Giugliano, block producers embed GasTarget and BaseFeeChangeDenominator
+		// in BlockExtraData. Since erigon does not produce blocks, we don't populate those
+		// fields here. They are decoded and validated from imported blocks instead.
 
 		blockExtraDataBytes, err := rlp.EncodeToBytes(blockExtraData)
 		if err != nil {
@@ -1431,6 +1465,12 @@ type BlockExtraData struct {
 	// length of TxDependencies[i] -> k (k = a whole number)
 	// k elements in TxDependencies[i] -> transaction indexes on which transaction i is dependent on
 	TxDependencies [][]int
+
+	// GasTarget is the target gas for the block, embedded post-Giugliano
+	GasTarget *uint64 `rlp:"optional"`
+
+	// BaseFeeChangeDenominator is the denominator used in base fee calculation, embedded post-Giugliano
+	BaseFeeChangeDenominator *uint64 `rlp:"optional"`
 }
 
 func GetValidatorBytes(h *types.Header, config *borcfg.BorConfig) []byte {

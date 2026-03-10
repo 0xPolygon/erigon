@@ -22,7 +22,9 @@ import (
 
 	"github.com/erigontech/erigon-lib/common"
 	"github.com/erigontech/erigon/db/rawdb"
+	"github.com/erigontech/erigon/execution/rlp"
 	"github.com/erigontech/erigon/execution/types"
+	"github.com/erigontech/erigon/polygon/bor"
 	"github.com/erigontech/erigon/polygon/heimdall"
 	"github.com/erigontech/erigon/rpc"
 	"github.com/erigontech/erigon/rpc/rpchelper"
@@ -406,4 +408,64 @@ func (api *BorImpl) GetSnapshotProposerSequence(blockNrOrHash *rpc.BlockNumberOr
 	}
 
 	return blockSigners, nil
+}
+
+// BlockGasParams contains gas target and base fee change denominator from block extra data.
+type BlockGasParams struct {
+	GasTarget                *uint64 `json:"gasTarget"`
+	BaseFeeChangeDenominator *uint64 `json:"baseFeeChangeDenominator"`
+}
+
+// GetBlockGasParams returns the gas target and base fee change denominator
+// embedded in the block's extra data (post-Giugliano).
+func (api *BorImpl) GetBlockGasParams(blockNrOrHash *rpc.BlockNumberOrHash) (*BlockGasParams, error) {
+	ctx := context.Background()
+	tx, err := api.db.BeginTemporalRo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var header *types.Header
+
+	if blockNrOrHash != nil {
+		if blockNr, ok := blockNrOrHash.Number(); ok {
+			if blockNr == rpc.LatestBlockNumber {
+				header = rawdb.ReadCurrentHeader(tx)
+			} else {
+				header, err = getHeaderByNumber(ctx, blockNr, api, tx)
+			}
+		} else {
+			if blockHash, ok := blockNrOrHash.Hash(); ok {
+				header, err = getHeaderByHash(ctx, api, tx, blockHash)
+			}
+		}
+	} else {
+		header = rawdb.ReadCurrentHeader(tx)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	if header == nil {
+		return nil, errUnknownBlock
+	}
+
+	result := &BlockGasParams{}
+
+	if len(header.Extra) < types.ExtraVanityLength+types.ExtraSealLength {
+		return result, nil
+	}
+
+	var blockExtraData bor.BlockExtraData
+	if err := rlp.DecodeBytes(
+		header.Extra[types.ExtraVanityLength:len(header.Extra)-types.ExtraSealLength],
+		&blockExtraData,
+	); err != nil {
+		return result, nil // Pre-Napoli blocks don't have RLP-encoded extra data
+	}
+
+	result.GasTarget = blockExtraData.GasTarget
+	result.BaseFeeChangeDenominator = blockExtraData.BaseFeeChangeDenominator
+	return result, nil
 }

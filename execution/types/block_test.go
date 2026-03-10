@@ -84,6 +84,9 @@ type BlockExtraDataTest struct {
 	// length of TxDependency[i]       ->   k (k = a whole number)
 	// k elements in TxDependency[i]   ->   transaction indexes on which transaction i is dependent on
 	TxDependency [][]uint64
+
+	GasTarget                *uint64 `rlp:"optional"`
+	BaseFeeChangeDenominator *uint64 `rlp:"optional"`
 }
 
 func TestTxDependencyBlockDecoding(t *testing.T) {

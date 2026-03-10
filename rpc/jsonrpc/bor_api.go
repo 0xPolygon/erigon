@@ -40,6 +40,7 @@ type BorAPI interface {
 	GetSnapshotProposer(blockNrOrHash *rpc.BlockNumberOrHash) (common.Address, error)
 	GetSnapshotProposerSequence(blockNrOrHash *rpc.BlockNumberOrHash) (BlockSigners, error)
 	GetRootHash(start uint64, end uint64) (string, error)
+	GetBlockGasParams(blockNrOrHash *rpc.BlockNumberOrHash) (*BlockGasParams, error)
 }
 
 type spanProducersReader interface {

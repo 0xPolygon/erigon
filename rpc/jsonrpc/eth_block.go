@@ -490,5 +490,5 @@ func addBorBlockExtraData(response map[string]interface{}, header *types.Header)
 		extra.BaseFeeChangeDenominator = &v
 	}
 
-	response["blockExtraData"] = extra
+	response["decodedExtra"] = extra
 }

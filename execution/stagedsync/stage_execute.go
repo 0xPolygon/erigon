@@ -441,7 +441,7 @@ func PruneExecutionStage(s *PruneState, tx kv.RwTx, cfg ExecuteBlockCfg, ctx con
 	if s.ForwardProgress > cfg.syncCfg.MaxReorgDepth && !cfg.syncCfg.AlwaysGenerateChangesets {
 		// (chunkLen is 8Kb) * (1_000 chunks) = 8mb
 		// Some blocks on bor-mainnet have 400 chunks of diff = 3mb
-		var pruneDiffsLimitOnChainTip = uint64(dbg.EnvInt("ERIGON_PRUNE_CHANGESETS_LIMIT", 1000))
+		var pruneDiffsLimitOnChainTip = dbg.EnvInt("ERIGON_PRUNE_CHANGESETS_LIMIT", 1000)
 		pruneTimeout := quickPruneTimeout
 		if s.CurrentSyncCycle.IsInitialCycle {
 			pruneDiffsLimitOnChainTip = math.MaxInt
@@ -453,7 +453,7 @@ func PruneExecutionStage(s *PruneState, tx kv.RwTx, cfg ExecuteBlockCfg, ctx con
 			kv.ChangeSets3,
 			s.ForwardProgress-cfg.syncCfg.MaxReorgDepth,
 			ctx,
-			int(pruneDiffsLimitOnChainTip),
+			pruneDiffsLimitOnChainTip,
 			pruneTimeout,
 			logger,
 			s.LogPrefix(),

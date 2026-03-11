@@ -1002,7 +1002,7 @@ func (at *AggregatorRoTx) PruneSmallBatches(ctx context.Context, timeout time.Du
 	furiousPrune := timeout > 5*time.Hour
 	aggressivePrune := !furiousPrune && timeout >= 1*time.Minute
 
-	var pruneLimit uint64 = 100
+	var pruneLimit uint64 = uint64(dbg.EnvInt("ERIGON_PRUNE_LIMIT", 100))
 	if furiousPrune {
 		pruneLimit = 1_000_000
 	}

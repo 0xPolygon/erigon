@@ -79,6 +79,10 @@ linters:
         - preferStringWriter
         - commentedOutCode
         - preferFprint
+        - dupOption          # new in golangci-lint v2.11.3;
+        - deprecatedComment  # new in golangci-lint v2.11.3;
+        - zeroByteRepeat     # new in golangci-lint v2.11.3;
+        - appendCombine      # new in golangci-lint v2.11.3;
       enabled-tags:
         - performance
         - diagnostic
@@ -118,11 +122,13 @@ linters:
           - gocritic
           - gosec
           - perfsprint
+          - prealloc
           - unused
         path: test\.go
       - linters:
           - gocritic
           - gosec
+          - prealloc
           - unused
         path: hack\.go
       - linters:
@@ -138,6 +144,13 @@ linters:
           - gocritic
           - gosec
         path: p2p/dnsdisc
+      - linters:
+          - govet
+        text: "impossible condition|tautological condition"
+        path: _test\.go
+      - linters:
+          - prealloc
+        text: "Consider preallocating"
     paths:
       - third_party$
       - builtin$

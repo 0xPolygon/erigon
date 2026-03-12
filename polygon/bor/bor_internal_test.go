@@ -142,12 +142,12 @@ func signTestHeader(t *testing.T, header *types.Header, config *borcfg.BorConfig
 // period=2, using the provided HF block numbers (nil = fork disabled).
 func newTestBorConfig(bhilaiBlock, giuglianoBlock *big.Int) *borcfg.BorConfig {
 	return &borcfg.BorConfig{
-		Period:         map[string]uint64{"0": 2},
-		ProducerDelay:  map[string]uint64{"0": 1},
-		Sprint:         map[string]uint64{"0": 16},
+		Period:           map[string]uint64{"0": 2},
+		ProducerDelay:    map[string]uint64{"0": 1},
+		Sprint:           map[string]uint64{"0": 16},
 		BackupMultiplier: map[string]uint64{"0": 2},
-		BhilaiBlock:    bhilaiBlock,
-		GiuglianoBlock: giuglianoBlock,
+		BhilaiBlock:      bhilaiBlock,
+		GiuglianoBlock:   giuglianoBlock,
 	}
 }
 
@@ -165,9 +165,9 @@ func TestValidateHeaderTime_PreBhilai(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name      string
-		headerTs  uint64
-		wantErr   bool
+		name     string
+		headerTs uint64
+		wantErr  bool
 	}{
 		{"at now", uint64(now.Unix()), false},
 		{"1s past", uint64(now.Unix()) - 1, false},

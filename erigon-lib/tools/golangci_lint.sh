@@ -2,13 +2,15 @@
 
 scriptDir=$(dirname "${BASH_SOURCE[0]}")
 scriptName=$(basename "${BASH_SOURCE[0]}")
-version="v2.4.0"
+version="v2.11.3"
 
 if [[ "$1" == "--install-deps" ]]
 then
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(go env GOPATH)/bin" "$version"
 	exit
 fi
+
+export PATH="$PATH:$(go env GOPATH)/bin"
 
 if ! which golangci-lint > /dev/null
 then

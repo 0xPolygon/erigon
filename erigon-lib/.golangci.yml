@@ -80,6 +80,10 @@ linters:
         - builtinShadowDecl
         - uncheckedInlineErr
         - preferStringWriter
+        - dupOption          # new in golangci-lint v2.11.3;
+        - deprecatedComment  # new in golangci-lint v2.11.3;
+        - zeroByteRepeat     # new in golangci-lint v2.11.3;
+        - appendCombine      # new in golangci-lint v2.11.3;
       enabled-tags:
         - performance
         - diagnostic
@@ -145,6 +149,9 @@ linters:
           - gocritic
           - gosec
         path: metrics/sample\.go
+      - linters:
+          - prealloc
+        text: "Consider preallocating"
     paths:
       - third_party$
       - builtin$

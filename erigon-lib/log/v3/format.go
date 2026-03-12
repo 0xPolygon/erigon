@@ -102,7 +102,8 @@ func TerminalFormatNoColor() Format {
 // For more details see: http://godoc.org/github.com/kr/logfmt
 func LogfmtFormat() Format {
 	return FormatFunc(func(r *Record) []byte {
-		common := []interface{}{r.KeyNames.Time, r.Time, r.KeyNames.Lvl, r.Lvl, r.KeyNames.Msg, r.Msg}
+		common := make([]interface{}, 0, 6+len(r.Ctx))
+		common = append(common, r.KeyNames.Time, r.Time, r.KeyNames.Lvl, r.Lvl, r.KeyNames.Msg, r.Msg)
 		buf := &bytes.Buffer{}
 		logfmt(buf, append(common, r.Ctx...), 0)
 		return buf.Bytes()

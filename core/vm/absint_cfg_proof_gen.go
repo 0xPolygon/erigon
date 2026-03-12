@@ -642,7 +642,8 @@ func pushNewEdges(workList []edge, edges []edge) []edge {
 			}
 		}
 		if !inWorkList {
-			head := []edge{e}
+			head := make([]edge, 0, 1+len(workList))
+			head = append(head, e)
 			workList = append(head, workList...)
 		}
 	}
@@ -792,7 +793,7 @@ func (cfg *Cfg) GenerateProof() *CfgProof {
 		}
 	}
 
-	entriesList := make([]int, 0)
+	entriesList := make([]int, 0, len(entries))
 	for pc := range entries {
 		entriesList = append(entriesList, pc)
 	}

@@ -599,7 +599,7 @@ func TestBlockWithdrawalsStorage(t *testing.T) {
 		Amount:    1001,
 	}
 
-	withdrawals := make([]*types.Withdrawal, 0)
+	withdrawals := make([]*types.Withdrawal, 0, 2)
 	withdrawals = append(withdrawals, &w)
 	withdrawals = append(withdrawals, &w2)
 

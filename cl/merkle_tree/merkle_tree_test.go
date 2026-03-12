@@ -46,7 +46,7 @@ func TestPowerOf2MerkleTree(t *testing.T) {
 
 func TestMerkleTreeAppendLeaf(t *testing.T) {
 	mt := merkle_tree.MerkleTree{}
-	testBuffer := make([]byte, 4*length.Hash)
+	testBuffer := make([]byte, 4*length.Hash, 8*length.Hash)
 	testBuffer[0] = 1
 	testBuffer[32] = 2
 	testBuffer[64] = 3
@@ -87,7 +87,7 @@ func TestMerkleTreeRootSingleElement(t *testing.T) {
 
 func TestMerkleTreeAppendLeafWithLowMaxDepth(t *testing.T) {
 	mt := merkle_tree.MerkleTree{}
-	testBuffer := make([]byte, 4*length.Hash)
+	testBuffer := make([]byte, 4*length.Hash, 8*length.Hash)
 	testBuffer[0] = 1
 	testBuffer[32] = 2
 	testBuffer[64] = 3
@@ -126,7 +126,7 @@ func TestMerkleTree17Elements(t *testing.T) {
 
 func TestMerkleTreeAppendLeafWithLowMaxDepthAndLimitAndTestWR(t *testing.T) {
 	mt := merkle_tree.MerkleTree{}
-	testBuffer := make([]byte, 4*length.Hash)
+	testBuffer := make([]byte, 4*length.Hash, 8*length.Hash)
 	testBuffer[0] = 1
 	testBuffer[32] = 2
 	testBuffer[64] = 3

@@ -336,7 +336,7 @@ func (c *Clique) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 
 	// Ensure the extra data has all its components
 	if len(header.Extra) < ExtraVanity {
-		header.Extra = append(header.Extra, bytes.Repeat([]byte{0x00}, ExtraVanity-len(header.Extra))...)
+		header.Extra = append(header.Extra, make([]byte, ExtraVanity-len(header.Extra))...)
 	}
 	header.Extra = header.Extra[:ExtraVanity]
 

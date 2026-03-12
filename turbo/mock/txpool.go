@@ -93,7 +93,7 @@ func (p *TestTxPool) Pending() (types.TransactionsGroupedBySender, error) {
 		from, _ := txn.Sender(*types.LatestSignerForChainID(nil))
 		batches[from] = append(batches[from], txn)
 	}
-	groups := types.TransactionsGroupedBySender{}
+	groups := make(types.TransactionsGroupedBySender, 0, len(batches))
 	for _, batch := range batches {
 		sort.Sort(types.TxByNonce(batch))
 		groups = append(groups, batch)

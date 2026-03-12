@@ -27,13 +27,15 @@ func InitKZG() {
 			panic(err)
 		}
 
-		var g1MonomialBytes, g1LagrangeBytes, g2MonomialBytes []byte
+		g1MonomialBytes := make([]byte, 0, len(setup.G1Monomial)*48)
 		for _, s := range setup.G1Monomial {
 			g1MonomialBytes = append(g1MonomialBytes, common.FromHex(s)...)
 		}
+		g1LagrangeBytes := make([]byte, 0, len(setup.G1Lagrange)*48)
 		for _, s := range setup.G1Lagrange {
 			g1LagrangeBytes = append(g1LagrangeBytes, common.FromHex(s)...)
 		}
+		g2MonomialBytes := make([]byte, 0, len(setup.G2Monomial)*96)
 		for _, s := range setup.G2Monomial {
 			g2MonomialBytes = append(g2MonomialBytes, common.FromHex(s)...)
 		}

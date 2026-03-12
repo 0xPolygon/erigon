@@ -505,7 +505,9 @@ func TestFindMergeRangeCornerCases(t *testing.T) {
 func Test_mergeEliasFano(t *testing.T) {
 	t.Skip()
 
-	firstList := []int{1, 298164, 298163, 13, 298160, 298159}
+	secondListLen := 17 // len of secondList below
+	firstList := make([]int, 0, 6+secondListLen)
+	firstList = append(firstList, 1, 298164, 298163, 13, 298160, 298159)
 	sort.Ints(firstList)
 	uniq := make(map[int]struct{})
 

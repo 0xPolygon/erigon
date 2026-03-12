@@ -200,7 +200,7 @@ func TestBlobTxnParsing(t *testing.T) {
 
 	hasEnvelope := true
 	bodyEnvelopePrefix := hexutil.MustDecodeHex("b9012b")
-	var bodyEnvelope []byte
+	bodyEnvelope := make([]byte, 0, len(bodyEnvelopePrefix)+1+len(bodyRlp))
 	bodyEnvelope = append(bodyEnvelope, bodyEnvelopePrefix...)
 	bodyEnvelope = append(bodyEnvelope, BlobTxnType)
 	bodyEnvelope = append(bodyEnvelope, bodyRlp...)
@@ -320,7 +320,7 @@ func TestWrapperV1BlobTxnParsing(t *testing.T) {
 
 	hasEnvelope := true
 	bodyEnvelopePrefix := hexutil.MustDecodeHex("b9012b")
-	var bodyEnvelope []byte
+	bodyEnvelope := make([]byte, 0, len(bodyEnvelopePrefix)+1+len(bodyRlp))
 	bodyEnvelope = append(bodyEnvelope, bodyEnvelopePrefix...)
 	bodyEnvelope = append(bodyEnvelope, BlobTxnType)
 	bodyEnvelope = append(bodyEnvelope, bodyRlp...)

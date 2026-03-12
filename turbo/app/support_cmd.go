@@ -149,7 +149,7 @@ func ConnectDiagnostics(cliCtx *cli.Context, logger log.Logger) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	debugURLs := []string{}
+	debugURLs := make([]string, 0, len(cliCtx.StringSlice(debugURLsFlag.Name)))
 
 	for _, debugURL := range cliCtx.StringSlice(debugURLsFlag.Name) {
 		debugURLs = append(debugURLs, "http://"+debugURL)

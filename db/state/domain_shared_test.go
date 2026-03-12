@@ -509,7 +509,7 @@ func TestSharedDomain_HasPrefix_StorageDomain(t *testing.T) {
 		k, v, err := c1.Next()
 		require.NoError(t, err)
 		require.Equal(t, append(append([]byte{}, acc1.Bytes()...), acc1slot1.Bytes()...), k)
-		wantValueBytes := make([]byte, 8)                      // 8 bytes for uint64 step num
+		wantValueBytes := make([]byte, 8, 9)                   // 8 bytes for uint64 step num
 		binary.BigEndian.PutUint64(wantValueBytes, ^uint64(1)) // step num
 		wantValueBytes = append(wantValueBytes, byte(1))       // value we wrote to the storage slot
 		require.Equal(t, wantValueBytes, v)
@@ -589,7 +589,7 @@ func TestSharedDomain_HasPrefix_StorageDomain(t *testing.T) {
 		k, v, err := c2.Next() // acc2 storage from step 2 will be there
 		require.NoError(t, err)
 		require.Equal(t, append(append([]byte{}, acc2.Bytes()...), acc2slot2.Bytes()...), k)
-		wantValueBytes := make([]byte, 8)                      // 8 bytes for uint64 step num
+		wantValueBytes := make([]byte, 8, 9)                   // 8 bytes for uint64 step num
 		binary.BigEndian.PutUint64(wantValueBytes, ^uint64(2)) // step num
 		wantValueBytes = append(wantValueBytes, byte(2))       // value we wrote to the storage slot
 		require.Equal(t, wantValueBytes, v)

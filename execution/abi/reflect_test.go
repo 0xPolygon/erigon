@@ -201,7 +201,7 @@ func TestConvertType(t *testing.T) {
 		Y *big.Int
 	}
 	// Create on-the-fly structure
-	var fields []reflect.StructField
+	fields := make([]reflect.StructField, 0, 2)
 	fields = append(fields, reflect.StructField{
 		Name: "X",
 		Type: reflect.TypeOf(new(big.Int)),

@@ -143,7 +143,7 @@ func TestErigonGetLatestLogsIgnoreTopics(t *testing.T) {
 
 	var lastBlock uint64
 	var blockCount uint64
-	containsTopics := make([][]common.Hash, 0)
+	containsTopics := make([][]common.Hash, 0, len(expectedLogs))
 
 	for i := range expectedLogs {
 		if expectedLogs[i].BlockNumber != lastBlock {

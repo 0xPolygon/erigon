@@ -118,7 +118,7 @@ func ResetSenders(ctx context.Context, tx kv.RwTx) error {
 }
 
 func ResetExec(ctx context.Context, db kv.TemporalRwDB) (err error) {
-	cleanupList := make([]string, 0)
+	cleanupList := make([]string, 0, len(stateBuckets)+len(stateHistoryBuckets))
 	cleanupList = append(cleanupList, stateBuckets...)
 	cleanupList = append(cleanupList, stateHistoryBuckets...)
 	cleanupList = append(cleanupList, db.Debug().DomainTables(kv.AccountsDomain, kv.StorageDomain, kv.CodeDomain, kv.CommitmentDomain, kv.ReceiptDomain, kv.RCacheDomain)...)

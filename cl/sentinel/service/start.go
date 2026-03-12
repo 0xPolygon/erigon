@@ -110,7 +110,8 @@ func createSentinel(
 	if err != nil {
 		return nil, nil, err
 	}
-	gossipTopics := []sentinel.GossipTopic{
+	gossipTopics := make([]sentinel.GossipTopic, 0, 6+int(cfg.BeaconConfig.MaxBlobsPerBlockElectra)+int(cfg.NetworkConfig.AttestationSubnetCount)+int(cfg.BeaconConfig.SyncCommitteeSubnetCount))
+	gossipTopics = append(gossipTopics,
 		sentinel.BeaconBlockSsz,
 		//sentinel.VoluntaryExitSsz,
 		sentinel.ProposerSlashingSsz,
@@ -120,7 +121,7 @@ func createSentinel(
 		////sentinel.LightClientOptimisticUpdateSsz,
 		sentinel.SyncCommitteeContributionAndProofSsz,
 		sentinel.BeaconAggregateAndProofSsz,
-	}
+	)
 
 	gossipTopics = append(
 		gossipTopics,

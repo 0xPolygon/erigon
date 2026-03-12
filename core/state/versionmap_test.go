@@ -64,7 +64,7 @@ func TestFlushMVWrite(t *testing.T) {
 
 	var res ReadResult
 
-	wd := VersionedWrites{}
+	wd := make(VersionedWrites, 0, 6)
 
 	wd = append(wd, &VersionedWrite{
 		Address: ap1,

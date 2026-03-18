@@ -118,6 +118,11 @@ func StageLoop(
 			hd.AfterInitialCycle()
 		}
 
+		// Use idle time between sync cycles for aggressive pruning
+		if !initialCycle {
+			idlePruneAggressiveWindow(ctx, db, logger)
+		}
+
 		if loopMinTime != 0 {
 			waitTime := loopMinTime - time.Since(start)
 			logger.Info("Wait time until next loop", "for", waitTime)
@@ -128,6 +133,29 @@ func StageLoop(
 			case <-c:
 			}
 		}
+	}
+}
+
+// idlePruneAggressiveWindow runs aggressive pruning during idle time between sync cycles.
+// On fast chains (e.g. ~2s block time), the normal per-block prune window (250ms) is too short
+// to keep up with state growth. This function uses the idle time after a sync cycle completes
+// to run a longer prune session with aggressive mode (timeout >= 1min triggers 10x scaling).
+func idlePruneAggressiveWindow(ctx context.Context, db kv.RwDB, logger log.Logger) {
+	const idlePruneTimeout = 2 * time.Minute
+	pruneStart := time.Now()
+	var haveMore bool
+	if err := db.Update(ctx, func(tx kv.RwTx) error {
+		var err error
+		haveMore, err = tx.(kv.TemporalRwTx).PruneSmallBatches(ctx, idlePruneTimeout)
+		return err
+	}); err != nil {
+		if !errors.Is(err, context.Canceled) {
+			logger.Warn("[idle-prune] aggressive prune failed", "err", err)
+		}
+		return
+	}
+	if duration := time.Since(pruneStart); duration > 1*time.Second {
+		logger.Info("[idle-prune] aggressive prune completed", "duration", duration, "haveMore", haveMore)
 	}
 }
 

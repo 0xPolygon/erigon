@@ -126,6 +126,9 @@ func (api *APIImpl) CallMany(ctx context.Context, bundles []Bundle, simulateCont
 	if err != nil {
 		return nil, err
 	}
+	if err := rpchelper.CheckBlockExecuted(tx, blockNum); err != nil {
+		return nil, err
+	}
 
 	block, err := api.blockWithSenders(ctx, tx, hash, blockNum)
 	if err != nil {

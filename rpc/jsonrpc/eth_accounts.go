@@ -40,16 +40,12 @@ func (api *APIImpl) GetBalance(ctx context.Context, address common.Address, bloc
 	}
 	defer tx.Rollback()
 
-	// Check if the requested block is in the future
-	if blockNrOrHash.BlockNumber != nil && *blockNrOrHash.BlockNumber >= rpc.EarliestBlockNumber {
-		latestBlock, err := rpchelper.GetLatestBlockNumber(tx)
-		if err != nil {
-			return nil, err
-		}
-		requestedBlock := blockNrOrHash.BlockNumber.Uint64()
-		if latestBlock < requestedBlock {
-			return nil, fmt.Errorf("block number is in the future latest=%d requested=%d", latestBlock, requestedBlock)
-		}
+	blockNumber, _, _, err := rpchelper.GetBlockNumber(ctx, blockNrOrHash, tx, api._blockReader, api.filters)
+	if err != nil {
+		return nil, err
+	}
+	if err := rpchelper.CheckBlockExecuted(tx, blockNumber); err != nil {
+		return nil, err
 	}
 
 	reader, err := rpchelper.CreateStateReader(ctx, tx, api._blockReader, blockNrOrHash, 0, api.filters, api.stateCache, api._txNumReader)
@@ -88,6 +84,15 @@ func (api *APIImpl) GetTransactionCount(ctx context.Context, address common.Addr
 		return nil, fmt.Errorf("getTransactionCount cannot open tx: %w", err1)
 	}
 	defer tx.Rollback()
+
+	blockNumber, _, _, err := rpchelper.GetBlockNumber(ctx, blockNrOrHash, tx, api._blockReader, api.filters)
+	if err != nil {
+		return nil, err
+	}
+	if err := rpchelper.CheckBlockExecuted(tx, blockNumber); err != nil {
+		return nil, err
+	}
+
 	reader, err := rpchelper.CreateStateReader(ctx, tx, api._blockReader, blockNrOrHash, 0, api.filters, api.stateCache, api._txNumReader)
 	if err != nil {
 		return nil, err
@@ -107,6 +112,15 @@ func (api *APIImpl) GetCode(ctx context.Context, address common.Address, blockNr
 		return nil, fmt.Errorf("getCode cannot open tx: %w", err1)
 	}
 	defer tx.Rollback()
+
+	blockNumber, _, _, err := rpchelper.GetBlockNumber(ctx, blockNrOrHash, tx, api._blockReader, api.filters)
+	if err != nil {
+		return nil, err
+	}
+	if err := rpchelper.CheckBlockExecuted(tx, blockNumber); err != nil {
+		return nil, err
+	}
+
 	reader, err := rpchelper.CreateStateReader(ctx, tx, api._blockReader, blockNrOrHash, 0, api.filters, api.stateCache, api._txNumReader)
 	if err != nil {
 		return nil, err
@@ -139,6 +153,14 @@ func (api *APIImpl) GetStorageAt(ctx context.Context, address common.Address, in
 	}
 	defer tx.Rollback()
 
+	blockNumber, _, _, err := rpchelper.GetBlockNumber(ctx, blockNrOrHash, tx, api._blockReader, api.filters)
+	if err != nil {
+		return hexutil.Encode(common.LeftPadBytes(empty, 32)), err
+	}
+	if err := rpchelper.CheckBlockExecuted(tx, blockNumber); err != nil {
+		return hexutil.Encode(common.LeftPadBytes(empty, 32)), err
+	}
+
 	reader, err := rpchelper.CreateStateReader(ctx, tx, api._blockReader, blockNrOrHash, 0, api.filters, api.stateCache, api._txNumReader)
 	if err != nil {
 		return hexutil.Encode(common.LeftPadBytes(empty, 32)), err
@@ -160,6 +182,14 @@ func (api *APIImpl) Exist(ctx context.Context, address common.Address, blockNrOr
 		return false, err1
 	}
 	defer tx.Rollback()
+
+	blockNumber, _, _, err := rpchelper.GetBlockNumber(ctx, blockNrOrHash, tx, api._blockReader, api.filters)
+	if err != nil {
+		return false, err
+	}
+	if err := rpchelper.CheckBlockExecuted(tx, blockNumber); err != nil {
+		return false, err
+	}
 
 	reader, err := rpchelper.CreateStateReader(ctx, tx, api._blockReader, blockNrOrHash, 0, api.filters, api.stateCache, api._txNumReader)
 	if err != nil {

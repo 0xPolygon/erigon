@@ -25,6 +25,7 @@ import (
 	"github.com/erigontech/erigon/execution/chain"
 	"github.com/erigontech/erigon/execution/consensus"
 	"github.com/erigontech/erigon/execution/types"
+	"github.com/erigontech/erigon/rpc/rpchelper"
 	"github.com/erigontech/erigon/turbo/services"
 	"github.com/erigontech/erigon/turbo/transactions"
 )
@@ -158,6 +159,10 @@ func (g *Generator) GetReceipt(ctx context.Context, cfg *chain.Config, tx kv.Tem
 		return nil, fmt.Errorf("ReceiptGen.GetReceipt: txn is a state-sync transaction")
 	}
 
+	if err := rpchelper.CheckBlockExecuted(tx, header.Number.Uint64()); err != nil {
+		return nil, err
+	}
+
 	blockHash := header.Hash()
 	blockNum := header.Number.Uint64()
 	txnHash := txn.Hash()
@@ -289,6 +294,10 @@ func (g *Generator) GetReceipt(ctx context.Context, cfg *chain.Config, tx kv.Tem
 // GetReceipts regenerates or loads receipts for a given block
 // This DOES NOT generate state-sync transaction receipt for bor.
 func (g *Generator) GetReceipts(ctx context.Context, cfg *chain.Config, tx kv.TemporalTx, block *types.Block) (types.Receipts, error) {
+	if err := rpchelper.CheckBlockExecuted(tx, block.NumberU64()); err != nil {
+		return nil, err
+	}
+
 	blockHash := block.Hash()
 
 	var receiptsFromDB types.Receipts

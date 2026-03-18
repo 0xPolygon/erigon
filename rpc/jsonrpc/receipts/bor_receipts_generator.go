@@ -18,6 +18,7 @@ import (
 	"github.com/erigontech/erigon/execution/consensus"
 	"github.com/erigontech/erigon/execution/types"
 	bortypes "github.com/erigontech/erigon/polygon/bor/types"
+	"github.com/erigontech/erigon/rpc/rpchelper"
 	"github.com/erigontech/erigon/turbo/services"
 	"github.com/erigontech/erigon/turbo/transactions"
 )
@@ -53,6 +54,10 @@ func (g *BorGenerator) GenerateBorReceipt(ctx context.Context, tx kv.TemporalTx,
 	msgs []*types.Message, chainConfig *chain.Config) (*types.Receipt, error) {
 	if receipt, ok := g.receiptCache.Get(block.Hash()); ok {
 		return receipt, nil
+	}
+
+	if err := rpchelper.CheckBlockExecuted(tx, block.NumberU64()); err != nil {
+		return nil, err
 	}
 
 	// Post Madhugiri HF, state-sync txn is part of block body so calculate index accordingly.

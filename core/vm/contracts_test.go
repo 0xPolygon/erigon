@@ -527,35 +527,73 @@ func TestLisovoCLZOpcode(t *testing.T) {
 	}
 }
 
-// TestPointEvaluationPrecompileRemoval verifies that the pointEvaluation (KZG) precompile
-// is present before LisovoPro and removed starting with LisovoPro.
-func TestPointEvaluationPrecompileRemoval(t *testing.T) {
+// TestPointEvaluationPrecompileAvailability verifies that the pointEvaluation (KZG)
+// precompile remains available through Lisovo and is only removed starting with LisovoPro.
+func TestPointEvaluationPrecompileAvailability(t *testing.T) {
 	t.Parallel()
 
 	pointEvaluationAddr := common.BytesToAddress([]byte{0x0a})
 
-	// Test Lisovo: should have pointEvaluation
-	lisovoRules := &chain.Rules{
-		IsLisovo:       true,
-		IsMadhugiriPro: true,
-		IsMadhugiri:    true,
-		IsBhilai:       true,
-	}
-	lisovoPrecompiles := Precompiles(lisovoRules)
-	if _, exists := lisovoPrecompiles[pointEvaluationAddr]; !exists {
-		t.Error("pointEvaluation (0x0a) should exist in Lisovo precompiles")
+	testCases := []struct {
+		name      string
+		rules     *chain.Rules
+		wantExist bool
+	}{
+		{
+			name: "Prague",
+			rules: &chain.Rules{
+				IsPrague: true,
+			},
+			wantExist: true,
+		},
+		{
+			name: "Madhugiri",
+			rules: &chain.Rules{
+				IsMadhugiri: true,
+				IsBhilai:    true,
+			},
+			wantExist: true,
+		},
+		{
+			name: "MadhugiriPro",
+			rules: &chain.Rules{
+				IsMadhugiriPro: true,
+				IsMadhugiri:    true,
+				IsBhilai:       true,
+			},
+			wantExist: true,
+		},
+		{
+			name: "Lisovo",
+			rules: &chain.Rules{
+				IsLisovo:       true,
+				IsMadhugiriPro: true,
+				IsMadhugiri:    true,
+				IsBhilai:       true,
+			},
+			wantExist: true,
+		},
+		{
+			name: "LisovoPro",
+			rules: &chain.Rules{
+				IsLisovoPro:    true,
+				IsLisovo:       true,
+				IsMadhugiriPro: true,
+				IsMadhugiri:    true,
+				IsBhilai:       true,
+			},
+			wantExist: false,
+		},
 	}
 
-	// Test LisovoPro: should not have pointEvaluation
-	lisovoProRules := &chain.Rules{
-		IsLisovoPro:    true,
-		IsLisovo:       true,
-		IsMadhugiriPro: true,
-		IsMadhugiri:    true,
-		IsBhilai:       true,
-	}
-	lisovoProPrecompiles := Precompiles(lisovoProRules)
-	if _, exists := lisovoProPrecompiles[pointEvaluationAddr]; exists {
-		t.Error("pointEvaluation (0x0a) should not exist in LisovoPro precompiles")
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			precompiles := Precompiles(testCase.rules)
+			_, exists := precompiles[pointEvaluationAddr]
+			if exists != testCase.wantExist {
+				t.Fatalf("pointEvaluation (0x0a) existence = %t, want %t", exists, testCase.wantExist)
+			}
+		})
 	}
 }

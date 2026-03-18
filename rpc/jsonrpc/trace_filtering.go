@@ -185,6 +185,9 @@ func (api *TraceAPIImpl) Block(ctx context.Context, blockNr rpc.BlockNumber, gas
 	if blockNum == 0 {
 		return []ParityTrace{}, nil
 	}
+	if err := rpchelper.CheckBlockExecuted(tx, blockNum); err != nil {
+		return nil, err
+	}
 	bn := hexutil.Uint64(blockNum)
 
 	// Extract transactions from block
@@ -757,6 +760,10 @@ func (api *TraceAPIImpl) callBlock(
 		RequireCanonical: true,
 	}
 
+	if err := rpchelper.CheckBlockExecuted(dbtx, block.NumberU64()); err != nil {
+		return nil, nil, err
+	}
+
 	stateReader, err := rpchelper.CreateStateReader(ctx, dbtx, api._blockReader, parentNrOrHash, 0, api.filters, api.stateCache, api._txNumReader)
 	if err != nil {
 		return nil, nil, err
@@ -871,6 +878,10 @@ func (api *TraceAPIImpl) callTransaction(
 		BlockNumber:      &parentNo,
 		BlockHash:        &parentHash,
 		RequireCanonical: true,
+	}
+
+	if err := rpchelper.CheckBlockExecuted(dbtx, blockNumber); err != nil {
+		return nil, err
 	}
 
 	stateReader, err := rpchelper.CreateStateReader(ctx, dbtx, api._blockReader, parentNrOrHash, 0, api.filters, api.stateCache, api._txNumReader)

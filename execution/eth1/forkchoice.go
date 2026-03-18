@@ -486,6 +486,12 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, original
 		}
 	}
 
+	// Write finalized hash BEFORE execution so shouldGenerateChangeSets() can read it
+	// during execution stage. This enables the UseForkchoiceFinality optimization.
+	if finalizedHash != (common.Hash{}) {
+		rawdb.WriteForkchoiceFinalized(tx, finalizedHash)
+	}
+
 	firstCycle := false
 	loopIter := 0
 	for {

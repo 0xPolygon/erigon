@@ -65,6 +65,10 @@ func (api *OtterscanAPIImpl) traceBlock(dbtx kv.TemporalTx, ctx context.Context,
 		return false, nil, fmt.Errorf("canonical hash not found %d", blockNum)
 	}
 
+	if err := rpchelper.CheckBlockExecuted(dbtx, blockNum); err != nil {
+		return false, nil, err
+	}
+
 	block, err := api.blockWithSenders(ctx, dbtx, blockHash, blockNum)
 	if err != nil {
 		return false, nil, err

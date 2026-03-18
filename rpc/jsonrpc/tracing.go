@@ -64,6 +64,9 @@ func (api *DebugAPIImpl) traceBlock(ctx context.Context, blockNrOrHash rpc.Block
 	if err != nil {
 		return err
 	}
+	if err := rpchelper.CheckBlockExecuted(tx, blockNumber); err != nil {
+		return err
+	}
 
 	if blockNumber == 0 {
 		stream.WriteNil()
@@ -373,6 +376,9 @@ func (api *DebugAPIImpl) TraceCall(ctx context.Context, args ethapi.CallArgs, bl
 	if err != nil {
 		return fmt.Errorf("get block number: %v", err)
 	}
+	if err := rpchelper.CheckBlockExecuted(dbtx, blockNumber); err != nil {
+		return err
+	}
 
 	err = api.BaseAPI.checkPruneHistory(ctx, dbtx, blockNumber)
 	if err != nil {
@@ -491,6 +497,9 @@ func (api *DebugAPIImpl) TraceCallMany(ctx context.Context, bundles []Bundle, si
 
 	blockNum, hash, isLatest, err := rpchelper.GetBlockNumber(ctx, simulateContext.BlockNumber, tx, api._blockReader, api.filters)
 	if err != nil {
+		return err
+	}
+	if err := rpchelper.CheckBlockExecuted(tx, blockNum); err != nil {
 		return err
 	}
 

@@ -291,6 +291,7 @@ type Sync struct {
 
 	ChaosMonkey              bool
 	AlwaysGenerateChangesets bool
+	UseForkchoiceFinality    bool
 	MaxReorgDepth            uint64
 	KeepExecutionProofs      bool
 	PersistReceiptsCacheV2   bool

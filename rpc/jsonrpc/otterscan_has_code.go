@@ -36,6 +36,9 @@ func (api *OtterscanAPIImpl) HasCode(ctx context.Context, address common.Address
 	if err != nil {
 		return false, err
 	}
+	if err := rpchelper.CheckBlockExecuted(tx, blockNumber); err != nil {
+		return false, err
+	}
 
 	reader, err := rpchelper.CreateHistoryStateReader(tx, blockNumber, 0, api._txNumReader)
 	if err != nil {

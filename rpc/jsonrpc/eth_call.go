@@ -84,6 +84,14 @@ func (api *APIImpl) Call(ctx context.Context, args ethapi2.CallArgs, requestedBl
 		args.Gas = (*hexutil.Uint64)(&api.GasCap)
 	}
 
+	blockNumber, _, _, err := rpchelper.GetBlockNumber(ctx, blockNrOrHash, tx, api._blockReader, api.filters)
+	if err != nil {
+		return nil, err
+	}
+	if err := rpchelper.CheckBlockExecuted(tx, blockNumber); err != nil {
+		return nil, err
+	}
+
 	header, _, err := headerByNumberOrHash(ctx, tx, blockNrOrHash, api)
 	if err != nil {
 		return nil, err
@@ -120,7 +128,7 @@ func headerByNumberOrHash(ctx context.Context, tx kv.Tx, blockNrOrHash rpc.Block
 	}
 	block := api.tryBlockFromLru(hash)
 	if block != nil {
-		return block.Header(), false, nil
+		return block.Header(), isLatest, nil
 	}
 
 	blockNum, _, _, err := rpchelper.GetBlockNumber(ctx, blockNrOrHash, tx, api._blockReader, api.filters)
@@ -159,6 +167,14 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi2.CallArgs
 		return 0, err
 	}
 	engine := api.engine()
+
+	blockNum, _, _, err := rpchelper.GetBlockNumber(ctx, *blockNrOrHash, dbtx, api._blockReader, api.filters)
+	if err != nil {
+		return 0, err
+	}
+	if err := rpchelper.CheckBlockExecuted(dbtx, blockNum); err != nil {
+		return 0, err
+	}
 
 	header, isLatest, err := headerByNumberOrHash(ctx, dbtx, *blockNrOrHash, api)
 	if err != nil {
@@ -767,6 +783,14 @@ func (api *APIImpl) CreateAccessList(ctx context.Context, args ethapi2.CallArgs,
 		return nil, err
 	}
 	engine := api.engine()
+
+	accessListBlockNum, _, _, err := rpchelper.GetBlockNumber(ctx, *blockNrOrHash, tx, api._blockReader, api.filters)
+	if err != nil {
+		return nil, err
+	}
+	if err := rpchelper.CheckBlockExecuted(tx, accessListBlockNum); err != nil {
+		return nil, err
+	}
 
 	header, latest, err := headerByNumberOrHash(ctx, tx, *blockNrOrHash, api)
 	if err != nil {

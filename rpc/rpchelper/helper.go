@@ -126,6 +126,19 @@ func _GetBlockNumber(ctx context.Context, requireCanonical bool, blockNrOrHash r
 	return blockNumber, hash, blockNumber == plainStateBlockNumber, true, nil
 }
 
+func CheckBlockExecuted(tx kv.Tx, blockNumber uint64) error {
+	lastExecutedBlock, err := stages.GetStageProgress(tx, stages.Execution)
+	if err != nil {
+		return err
+	}
+
+	if blockNumber > lastExecutedBlock {
+		return fmt.Errorf("block %d is not executed yet (last executed block: %d)", blockNumber, lastExecutedBlock)
+	}
+
+	return nil
+}
+
 func CreateStateReader(ctx context.Context, tx kv.TemporalTx, br services.FullBlockReader, blockNrOrHash rpc.BlockNumberOrHash, txnIndex int, filters *Filters, stateCache kvcache.Cache, txNumReader rawdbv3.TxNumsReader) (state.StateReader, error) {
 	blockNumber, _, latest, _, err := _GetBlockNumber(ctx, true, blockNrOrHash, tx, br, filters)
 	if err != nil {

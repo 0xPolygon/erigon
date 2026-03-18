@@ -1840,6 +1840,12 @@ func (s *Ethereum) Stop() error {
 	return nil
 }
 
+// BgComponentError returns the first non-context-canceled error from background
+// components, if any. It is safe to call after Stop() has returned.
+func (s *Ethereum) BgComponentError() error {
+	return s.bgComponentErr
+}
+
 func (s *Ethereum) ChainDB() kv.RwDB {
 	return s.chainDB
 }

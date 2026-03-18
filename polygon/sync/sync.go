@@ -49,6 +49,10 @@ const maxBlockBatchDownloadSize = 256
 const heimdallSyncRetryIntervalOnTip = 200 * time.Millisecond
 const heimdallSyncRetryIntervalOnStartup = 30 * time.Second
 
+// catchUpAgeThreshold is the maximum acceptable tip age before the event loop
+// breaks out and re-enters syncToTip for efficient waypoint-based catch-up batching.
+const catchUpAgeThreshold = 30 * time.Second
+
 var (
 	futureMilestoneDelay  = 1 * time.Second // amount of time to wait before putting a future milestone back in the event queue
 	errAlreadyProcessed   = errors.New("already processed")
@@ -143,6 +147,17 @@ type Sync struct {
 	wiggleCalculator   wiggleCalculator
 	engineAPISwitcher  EngineAPISwitcher
 	blockRequestsCache *lru.ARCCache[common.Hash, struct{}]
+
+	// lastFinalizedBlockNum tracks the end block of the last validated finality
+	// waypoint (milestone or checkpoint). This is used to set the finalized block
+	// in forkchoice updates, enabling the execution stage to skip changeset
+	// generation for finalized blocks.
+	lastFinalizedBlockNum uint64
+
+	// lastTipAge tracks how far behind the chain tip the node is.
+	// Updated in commitExecution, used to detect when the event loop
+	// should break out and re-enter syncToTip for catch-up batching.
+	lastTipAge time.Duration
 }
 
 func (s *Sync) commitExecution(ctx context.Context, newTip *types.Header, finalizedHeader *types.Header) error {
@@ -150,9 +165,22 @@ func (s *Sync) commitExecution(ctx context.Context, newTip *types.Header, finali
 		return err
 	}
 
+	// After flush, improve finalized header if possible.
+	// If newTip is at or before the last known milestone, it IS finalized.
+	tipNum := newTip.Number.Uint64()
+	if s.lastFinalizedBlockNum > 0 && tipNum <= s.lastFinalizedBlockNum {
+		finalizedHeader = newTip
+	} else if s.lastFinalizedBlockNum > 0 {
+		// Try to get the milestone end block header (now available after flush)
+		if h, err := s.execution.GetHeader(ctx, s.lastFinalizedBlockNum); err == nil && h != nil {
+			finalizedHeader = h
+		}
+	}
+
 	blockNum := newTip.Number.Uint64()
 
 	age := common.PrettyAge(time.Unix(int64(newTip.Time), 0))
+	s.lastTipAge = time.Since(time.Unix(int64(newTip.Time), 0))
 	s.logger.Info(syncLogPrefix("update fork choice"), "block", blockNum, "hash", newTip.Hash(), "age", age)
 	fcStartTime := time.Now()
 
@@ -251,11 +279,22 @@ func (s *Sync) handleMilestoneTipMismatch(ctx context.Context, ccb *CanonicalCha
 func (s *Sync) applyNewMilestoneOnTip(ctx context.Context, event EventNewMilestone, ccb *CanonicalChainBuilder) error {
 	milestone := event
 	if milestone.EndBlock().Uint64() <= ccb.Root().Number.Uint64() {
+		s.logger.Debug(syncLogPrefix("skipping milestone - already behind root"),
+			"milestoneEnd", milestone.EndBlock().Uint64(),
+			"ccbRoot", ccb.Root().Number.Uint64(),
+		)
 		return nil
 	}
 
 	// milestone is ahead of our current tip
 	if milestone.EndBlock().Uint64() > ccb.Tip().Number.Uint64() {
+		// Track finality even for future milestones - the milestone IS finality from Heimdall.
+		// This lets commitExecution() set finalizedHeader = newTip for blocks within this range.
+		endBlock := milestone.EndBlock().Uint64()
+		if endBlock > s.lastFinalizedBlockNum {
+			s.lastFinalizedBlockNum = endBlock
+		}
+
 		s.logger.Debug(syncLogPrefix("putting milestone event back in the queue because our tip is behind the milestone"),
 			"milestoneId", milestone.RawId(),
 			"milestoneStart", milestone.StartBlock().Uint64(),
@@ -291,6 +330,15 @@ func (s *Sync) applyNewMilestoneOnTip(ctx context.Context, event EventNewMilesto
 	if endBlock > 0 {
 		pruneTo = endBlock - 1
 	}
+
+	// Track the milestone end block for forkchoice finality.
+	// This enables the execution stage to skip changeset generation for finalized blocks.
+	// Use max to avoid lowering the value when an older at-tip milestone is processed
+	// after a newer ahead-of-tip milestone has already been recorded.
+	if endBlock > s.lastFinalizedBlockNum {
+		s.lastFinalizedBlockNum = endBlock
+	}
+
 	return ccb.PruneRoot(pruneTo)
 }
 
@@ -862,23 +910,51 @@ func (s *Sync) Run(ctx context.Context) error {
 	}
 
 	s.logger.Info(syncLogPrefix("running sync component"))
-	result, err := s.syncToTip(ctx)
-	if err != nil {
-		return err
-	}
 
-	if s.config.PolygonPosSingleSlotFinality {
-		if result.latestTip.Number.Uint64() >= s.config.PolygonPosSingleSlotFinalityBlockAt {
-			s.engineAPISwitcher.SetConsuming(true)
+	// Outer catch-up loop: when the event loop falls behind, break out and
+	// re-enter syncToTip which uses efficient waypoint-based batching.
+	for {
+		result, err := s.syncToTip(ctx)
+		if err != nil {
+			return err
+		}
+
+		if s.config.PolygonPosSingleSlotFinality {
+			if result.latestTip.Number.Uint64() >= s.config.PolygonPosSingleSlotFinalityBlockAt {
+				s.logger.Info(syncLogPrefix("switching to engine API mode (SSF)"), "tip", result.latestTip.Number.Uint64())
+				s.engineAPISwitcher.SetConsuming(true)
+				return nil
+			}
+		}
+
+		ccBuilder, err := s.initialiseCcb(ctx, result)
+		if err != nil {
+			return err
+		}
+
+		needsCatchUp, err := s.runEventLoop(ctx, ccBuilder)
+		if err != nil {
+			return err
+		}
+		if !needsCatchUp {
 			return nil
 		}
-	}
 
-	ccBuilder, err := s.initialiseCcb(ctx, result)
-	if err != nil {
-		return err
+		s.logger.Info(syncLogPrefix("re-entering syncToTip for catch-up"),
+			"lastTipAge", s.lastTipAge,
+			"threshold", catchUpAgeThreshold,
+		)
 	}
+}
 
+// runEventLoop processes tip events (new blocks, milestones, block hashes) one at a time.
+// It returns needsCatchUp=true when the node has fallen too far behind and should re-enter
+// syncToTip for efficient waypoint-based batch catch-up.
+//
+// Known limitations:
+// - initialCycle is never true during catch-up re-entries (conservative pruning applies)
+// - Span rotation every 128 blocks (~256s) adds ~12s overhead, which can trigger catch-up
+func (s *Sync) runEventLoop(ctx context.Context, ccBuilder *CanonicalChainBuilder) (needsCatchUp bool, err error) {
 	inactivityDuration := 30 * time.Second
 	lastProcessedEventTime := time.Now()
 	inactivityTicker := time.NewTicker(inactivityDuration)
@@ -889,34 +965,46 @@ func (s *Sync) Run(ctx context.Context) error {
 			if s.config.PolygonPosSingleSlotFinality {
 				block, err := s.execution.CurrentHeader(ctx)
 				if err != nil {
-					return err
+					return false, err
 				}
 
 				if block.Number.Uint64() >= s.config.PolygonPosSingleSlotFinalityBlockAt {
 					s.engineAPISwitcher.SetConsuming(true)
-					return nil
+					return false, nil
 				}
 			}
 
+			var checkAge bool
 			switch event.Type {
 			case EventTypeNewMilestone:
 				if err = s.applyNewMilestoneOnTip(ctx, event.AsNewMilestone(), ccBuilder); err != nil {
-					return err
+					return false, err
 				}
 			case EventTypeNewBlock:
 				if err = s.applyNewBlockOnTip(ctx, event.AsNewBlock(), ccBuilder); err != nil {
-					return err
+					return false, err
 				}
+				checkAge = true
 			case EventTypeNewBlockBatch:
 				if err = s.applyNewBlockBatchOnTip(ctx, event.AsNewBlockBatch(), ccBuilder); err != nil {
-					return err
+					return false, err
 				}
+				checkAge = true
 			case EventTypeNewBlockHashes:
 				if err = s.applyNewBlockHashesOnTip(ctx, event.AsNewBlockHashes(), ccBuilder); err != nil {
-					return err
+					return false, err
 				}
+				checkAge = true
 			default:
 				panic(fmt.Sprintf("unexpected event type: %v", event.Type))
+			}
+
+			// After processing block events (not milestones, which are finality metadata),
+			// check if we've fallen too far behind and need to switch to batch catch-up mode.
+			if checkAge && s.lastTipAge > catchUpAgeThreshold {
+				s.logger.Info(syncLogPrefix("node is behind, switching to catch-up mode"),
+					"tipAge", s.lastTipAge, "threshold", catchUpAgeThreshold)
+				return true, nil
 			}
 
 			lastProcessedEventTime = time.Now()
@@ -927,7 +1015,7 @@ func (s *Sync) Run(ctx context.Context) error {
 
 			s.logger.Info(syncLogPrefix("waiting for chain tip events..."))
 		case <-ctx.Done():
-			return ctx.Err()
+			return false, ctx.Err()
 		}
 	}
 }
@@ -949,6 +1037,9 @@ func (s *Sync) initialiseCcb(ctx context.Context, result syncToTipResult) (*Cano
 		if result.latestWaypoint.EndBlock().Uint64() > tipNum {
 			return nil, fmt.Errorf("unexpected rootNum > tipNum: %d > %d", rootNum, tipNum)
 		}
+		// Initialize lastFinalizedBlockNum from the latest waypoint (milestone or checkpoint)
+		s.lastFinalizedBlockNum = rootNum
+		s.logger.Debug(syncLogPrefix("initialized milestone finality"), "lastFinalizedBlock", s.lastFinalizedBlockNum)
 	}
 
 	s.logger.Debug(syncLogPrefix("initialising canonical chain builder"), "rootNum", rootNum, "tipNum", tipNum)
@@ -1046,6 +1137,31 @@ func (s *Sync) syncToTip(ctx context.Context) (syncToTipResult, error) {
 		}
 	}
 
+	// If we didn't get a waypoint from sync (e.g., already at tip), fetch the latest milestone
+	// This ensures we have milestone finality info for the execution stage optimization
+	if finalisedTip.latestWaypoint == nil {
+		s.logger.Info(syncLogPrefix("no waypoint from sync, fetching latest milestone..."))
+		latestMilestone, ok, err := s.heimdallSync.SynchronizeMilestones(ctx)
+		if err != nil {
+			s.logger.Warn(syncLogPrefix("failed to get latest milestone for finality"), "err", err)
+		} else if ok && latestMilestone != nil {
+			finalisedTip.latestWaypoint = latestMilestone
+			s.logger.Info(syncLogPrefix("fetched latest milestone for finality"),
+				"milestoneEndBlock", latestMilestone.EndBlock().Uint64(),
+			)
+		} else {
+			s.logger.Warn(syncLogPrefix("SynchronizeMilestones returned no milestone"), "ok", ok, "milestoneNil", latestMilestone == nil)
+		}
+	} else {
+		s.logger.Info(syncLogPrefix("waypoint from sync available"),
+			"waypointEndBlock", finalisedTip.latestWaypoint.EndBlock().Uint64(),
+		)
+	}
+
+	s.logger.Info(syncLogPrefix("syncToTip finished"),
+		"tipNum", finalisedTip.latestTip.Number.Uint64(),
+		"hasWaypoint", finalisedTip.latestWaypoint != nil,
+	)
 	return finalisedTip, nil
 }
 
@@ -1091,8 +1207,14 @@ func (s *Sync) sync(
 			return syncToTipResult{}, false, nil
 		}
 
+		// Track the waypoint end block for forkchoice finality
+		waypointEndBlock := waypoint.EndBlock().Uint64()
+		if waypointEndBlock > s.lastFinalizedBlockNum {
+			s.lastFinalizedBlockNum = waypointEndBlock
+		}
+
 		// notify about latest waypoint end block so that eth_syncing API doesn't flicker on initial sync
-		s.notifications.NewLastBlockSeen(waypoint.EndBlock().Uint64())
+		s.notifications.NewLastBlockSeen(waypointEndBlock)
 
 		newTip, err := blockDownload(ctx, tip.Number.Uint64()+1, syncTo)
 		if err != nil {

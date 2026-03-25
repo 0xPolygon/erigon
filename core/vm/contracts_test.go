@@ -527,35 +527,45 @@ func TestLisovoCLZOpcode(t *testing.T) {
 	}
 }
 
-// TestPointEvaluationPrecompileRemoval verifies that the pointEvaluation (KZG) precompile
-// is present before LisovoPro and removed starting with LisovoPro.
+// TestPointEvaluationPrecompileRemoval verifies that the kzgPointEvaluation precompile
+// is present from Madhugiri through Lisovo, and is not present before Madhugiri and starting
+// with LisovoPro.
 func TestPointEvaluationPrecompileRemoval(t *testing.T) {
 	t.Parallel()
 
-	pointEvaluationAddr := common.BytesToAddress([]byte{0x0a})
+	kzgPointEvaluationAddr := common.BytesToAddress([]byte{0x0a})
+	kzgPointEvaluationPrecompile := &pointEvaluation{}
 
-	// Test Lisovo: should have pointEvaluation
-	lisovoRules := &chain.Rules{
-		IsLisovo:       true,
-		IsMadhugiriPro: true,
-		IsMadhugiri:    true,
-		IsBhilai:       true,
+	// We verify a few things in this test:
+	//   - Madhugiri, MadhugiriPro, and Lisovo have the kzg precompile enabled
+	//   - LisovoPro removes it, so it should not be enabled
+	//   - Hard forks before Madhugiri (for example, Bhilai, Napoli) should not have kzg enabled
+	// Note that this test is slightly different from bor as in erigon we never enable
+	// ethereum hard forks like Prague, Cancun.
+	type testCase struct {
+		name          string
+		rules         chain.Rules
+		shouldHaveKzg bool
 	}
-	lisovoPrecompiles := Precompiles(lisovoRules)
-	if _, exists := lisovoPrecompiles[pointEvaluationAddr]; !exists {
-		t.Error("pointEvaluation (0x0a) should exist in Lisovo precompiles")
+	cases := []testCase{
+		{name: "Napoli (Pre-Madhugiri)", rules: chain.Rules{IsNapoli: true}, shouldHaveKzg: false},
+		{name: "Bhilai (Pre-Madhugiri)", rules: chain.Rules{IsBhilai: true}, shouldHaveKzg: false},
+		{name: "Madhugiri", rules: chain.Rules{IsMadhugiri: true}, shouldHaveKzg: true},
+		{name: "MadhugiriPro", rules: chain.Rules{IsMadhugiriPro: true}, shouldHaveKzg: true},
+		{name: "Lisovo", rules: chain.Rules{IsLisovo: true}, shouldHaveKzg: true},
+		{name: "LisovoPro", rules: chain.Rules{IsLisovoPro: true}, shouldHaveKzg: false},
 	}
-
-	// Test LisovoPro: should not have pointEvaluation
-	lisovoProRules := &chain.Rules{
-		IsLisovoPro:    true,
-		IsLisovo:       true,
-		IsMadhugiriPro: true,
-		IsMadhugiri:    true,
-		IsBhilai:       true,
-	}
-	lisovoProPrecompiles := Precompiles(lisovoProRules)
-	if _, exists := lisovoProPrecompiles[pointEvaluationAddr]; exists {
-		t.Error("pointEvaluation (0x0a) should not exist in LisovoPro precompiles")
+	for _, tc := range cases {
+		precompiles := Precompiles(&tc.rules)
+		pc, exists := precompiles[kzgPointEvaluationAddr]
+		if tc.shouldHaveKzg && !exists {
+			t.Errorf("kzgPointEvaluation (0x0a) should exist in %v precompiles", tc.name)
+		}
+		if !tc.shouldHaveKzg && exists {
+			t.Errorf("kzgPointEvaluation (0x0a) should not exist in %v precompiles", tc.name)
+		}
+		if exists && pc.Name() != kzgPointEvaluationPrecompile.Name() {
+			t.Errorf("invalid precompile loaded instead of kzgPointEvaluation (0x0a). expected name: %s, got name: %s, test case: %s", kzgPointEvaluationPrecompile.Name(), pc.Name(), tc.name)
+		}
 	}
 }

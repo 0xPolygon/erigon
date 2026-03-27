@@ -763,7 +763,7 @@ Loop:
 				timeStart := time.Now()
 
 				// allow greedy prune on non-chain-tip
-				pruneTimeout := 250 * time.Millisecond
+				pruneTimeout := time.Duration(dbg.EnvInt("ERIGON_PRUNE_TIMEOUT_MS", 250)) * time.Millisecond
 				if initialCycle {
 					pruneTimeout = 10 * time.Hour
 

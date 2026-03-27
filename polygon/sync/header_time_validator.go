@@ -114,6 +114,16 @@ func (htv *HeaderTimeValidator) needToWaitForNewSpan(header *types.Header, paren
 	headerNum := header.Number.Uint64()
 	// the current producer has published a block, but it came too late (i.e. the parent has been evicted from the ttl cache)
 	if author == producer && producer == parentAuthor && !htv.recentVerifiedHeaders.Has(header.ParentHash) {
+		// Guard against false positives caused by node-internal processing delays.
+		// The TTL cache eviction only means the node was slow — not that the chain
+		// itself had a large block-time gap.  Check the actual on-chain timestamp
+		// difference: if consecutive blocks from the same producer have a normal
+		// gap (≤ VeBlopBlockTimeout), no span rotation could have occurred and we
+		// should not stall for 12 seconds waiting for one.
+		onChainGap := time.Duration(header.Time-parent.Time) * time.Second
+		if onChainGap <= VeBlopBlockTimeout {
+			return false, 0, nil
+		}
 		htv.logger.Info("[span-rotation] need to wait for span rotation due to longer than expected block time from current producer", "blockNum", headerNum, "parentHeader", header.ParentHash, "author", author)
 		return true, VeBlopNewSpanTimeout, nil
 	}

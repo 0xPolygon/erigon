@@ -224,6 +224,8 @@ type BorConfig interface {
 	GetLisovoProBlock() *big.Int
 	IsGiugliano(num uint64) bool
 	GetGiuglianoBlock() *big.Int
+	IsDeterministicStateSync(num uint64) bool
+	GetDeterministicStateSyncBlock() *big.Int
 	StateReceiverContractAddress() common.Address
 	CalculateSprintNumber(number uint64) uint64
 	CalculateSprintLength(number uint64) uint64
@@ -242,7 +244,7 @@ func (c *Config) String() string {
 	engine := c.getEngine()
 
 	if c.Bor != nil {
-		return fmt.Sprintf("{ChainID: %v, Agra: %v, Napoli: %v, Ahmedabad: %v, Bhilai: %v, Rio: %v, Madhugiri: %v, MadhugiriPro: %v, Lisovo: %v, LisovoPro: %v, Giugliano: %v, Engine: %v}",
+		return fmt.Sprintf("{ChainID: %v, Agra: %v, Napoli: %v, Ahmedabad: %v, Bhilai: %v, Rio: %v, Madhugiri: %v, MadhugiriPro: %v, Lisovo: %v, LisovoPro: %v, Giugliano: %v, DeterministicStateSync: %v, Engine: %v}",
 			c.ChainID,
 			c.Bor.GetAgraBlock(),
 			c.Bor.GetNapoliBlock(),
@@ -254,6 +256,7 @@ func (c *Config) String() string {
 			c.Bor.GetLisovoBlock(),
 			c.Bor.GetLisovoProBlock(),
 			c.Bor.GetGiuglianoBlock(),
+			c.Bor.GetDeterministicStateSyncBlock(),
 			engine,
 		)
 	}

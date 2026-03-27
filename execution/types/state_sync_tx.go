@@ -134,8 +134,11 @@ func (tx *StateSyncTx) RawSignatureValues() (*uint256.Int, *uint256.Int, *uint25
 func (tx *StateSyncTx) EncodingSize() int {
 	var b bytes.Buffer
 	_ = tx.encode(&b)
-	data := make([]byte, 1+b.Len())
-	return rlp.StringLen(data)
+	// Return envelope size (type byte + encoded payload) without the outer
+	// string prefix. EncodingSizeGenericList adds the prefix itself, so
+	// including it here would double-count and produce an oversized RLP
+	// frame, causing "value size exceeds available input length" error on peers.
+	return 1 + b.Len()
 }
 
 // EncodeRLP implements rlp.Encoder for database storage.

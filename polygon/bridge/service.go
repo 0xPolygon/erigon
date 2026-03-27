@@ -37,6 +37,8 @@ import (
 
 type eventFetcher interface {
 	FetchStateSyncEvents(ctx context.Context, fromId uint64, to time.Time, limit int) ([]*EventRecordWithTime, error)
+	FetchBlockHeightByTime(ctx context.Context, cutoffTime int64) (int64, error)
+	FetchStateSyncEventsAtHeight(ctx context.Context, fromID uint64, toTime int64, heimdallHeight int64, limit int) ([]*EventRecordWithTime, error)
 }
 
 type ServiceConfig struct {
@@ -69,6 +71,7 @@ type Service struct {
 	reachedTip             atomic.Bool
 	fetchedEventsSignal    chan struct{}
 	lastFetchedEventTime   atomic.Uint64
+	lastFetchedEventId     atomic.Uint64
 	lastProcessedBlockInfo atomic.Pointer[ProcessedBlockInfo]
 	unwindMu               sync.Mutex
 	ready                  ready
@@ -143,6 +146,7 @@ func (s *Service) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	s.lastFetchedEventId.Store(lastFetchedEventId)
 
 	lastProcessedEventId, err := s.store.LastProcessedEventId(ctx)
 	if err != nil {
@@ -250,6 +254,7 @@ func (s *Service) Run(ctx context.Context) error {
 		}
 
 		s.lastFetchedEventTime.Store(uint64(lastFetchedEventTime))
+		s.lastFetchedEventId.Store(lastFetchedEventId)
 		s.signalFetchedEvents()
 
 		select {
@@ -402,13 +407,43 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 		var endId uint64
 
 		if eventLimit == nil || *eventLimit > 0 {
-			if err = s.waitForScraper(ctx, toTime); err != nil {
-				return err
-			}
+			if s.borConfig.IsDeterministicStateSync(blockNum) {
+				heimdallHeight, err := s.eventFetcher.FetchBlockHeightByTime(ctx, int64(toTime))
+				if err != nil {
+					return fmt.Errorf("deterministic state sync: failed to resolve Heimdall height for cutoff %d: %w", toTime, err)
+				}
 
-			endId, err = s.store.LastEventIdWithinWindow(ctx, startId, time.Unix(int64(toTime), 0))
-			if err != nil {
-				return err
+				events, err := s.eventFetcher.FetchStateSyncEventsAtHeight(ctx, startId, int64(toTime), heimdallHeight, 0)
+				if err != nil {
+					return fmt.Errorf("deterministic state sync: failed to fetch events at Heimdall height %d: %w", heimdallHeight, err)
+				}
+
+				if len(events) > 0 {
+					// Validate that Heimdall returned a contiguous prefix starting from startId.
+					if events[0].ID != startId {
+						return fmt.Errorf("deterministic state sync: Heimdall returned first event ID %d, expected %d (heimdall height %d)", events[0].ID, startId, heimdallHeight)
+					}
+					for i := 1; i < len(events); i++ {
+						if events[i].ID != events[i-1].ID+1 {
+							return fmt.Errorf("deterministic state sync: non-contiguous event IDs from Heimdall: %d followed by %d (heimdall height %d)", events[i-1].ID, events[i].ID, heimdallHeight)
+						}
+					}
+
+					lastEventId := events[len(events)-1].ID
+					if err = s.waitForScraperByEventId(ctx, lastEventId); err != nil {
+						return err
+					}
+					endId = lastEventId
+				}
+			} else {
+				if err = s.waitForScraper(ctx, toTime); err != nil {
+					return err
+				}
+
+				endId, err = s.store.LastEventIdWithinWindow(ctx, startId, time.Unix(int64(toTime), 0))
+				if err != nil {
+					return err
+				}
 			}
 		}
 
@@ -540,6 +575,41 @@ func (s *Service) waitForScraper(ctx context.Context, toTime uint64) error {
 
 		reachedTip = s.reachedTip.Load()
 		lastFetchedEventTime = s.lastFetchedEventTime.Load()
+
+		select {
+		case <-logTicker.C:
+			shouldLog = true
+		default:
+			shouldLog = false
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) waitForScraperByEventId(ctx context.Context, targetEventId uint64) error {
+	logTicker := time.NewTicker(5 * time.Second)
+	defer logTicker.Stop()
+
+	shouldLog := true
+	reachedTip := s.reachedTip.Load()
+	lastFetchedEventId := s.lastFetchedEventId.Load()
+	for !reachedTip && lastFetchedEventId < targetEventId {
+		if shouldLog {
+			s.logger.Debug(
+				bridgeLogPrefix("waiting for event scrapping to catch up (by event ID)"),
+				"reachedTip", reachedTip,
+				"lastFetchedEventId", lastFetchedEventId,
+				"targetEventId", targetEventId,
+			)
+		}
+
+		if err := s.waitFetchedEventsSignal(ctx); err != nil {
+			return err
+		}
+
+		reachedTip = s.reachedTip.Load()
+		lastFetchedEventId = s.lastFetchedEventId.Load()
 
 		select {
 		case <-logTicker.C:

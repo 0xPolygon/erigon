@@ -77,6 +77,84 @@ func (c *MockClientCloseCall) DoAndReturn(f func()) *MockClientCloseCall {
 	return c
 }
 
+// FetchBlockHeightByTime mocks base method.
+func (m *MockClient) FetchBlockHeightByTime(ctx context.Context, cutoffTime int64) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchBlockHeightByTime", ctx, cutoffTime)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchBlockHeightByTime indicates an expected call of FetchBlockHeightByTime.
+func (mr *MockClientMockRecorder) FetchBlockHeightByTime(ctx, cutoffTime any) *MockClientFetchBlockHeightByTimeCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchBlockHeightByTime", reflect.TypeOf((*MockClient)(nil).FetchBlockHeightByTime), ctx, cutoffTime)
+	return &MockClientFetchBlockHeightByTimeCall{Call: call}
+}
+
+// MockClientFetchBlockHeightByTimeCall wrap *gomock.Call
+type MockClientFetchBlockHeightByTimeCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClientFetchBlockHeightByTimeCall) Return(arg0 int64, arg1 error) *MockClientFetchBlockHeightByTimeCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClientFetchBlockHeightByTimeCall) Do(f func(context.Context, int64) (int64, error)) *MockClientFetchBlockHeightByTimeCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClientFetchBlockHeightByTimeCall) DoAndReturn(f func(context.Context, int64) (int64, error)) *MockClientFetchBlockHeightByTimeCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// FetchStateSyncEventsAtHeight mocks base method.
+func (m *MockClient) FetchStateSyncEventsAtHeight(ctx context.Context, fromID uint64, toTime int64, heimdallHeight int64, limit int) ([]*EventRecordWithTime, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchStateSyncEventsAtHeight", ctx, fromID, toTime, heimdallHeight, limit)
+	ret0, _ := ret[0].([]*EventRecordWithTime)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchStateSyncEventsAtHeight indicates an expected call of FetchStateSyncEventsAtHeight.
+func (mr *MockClientMockRecorder) FetchStateSyncEventsAtHeight(ctx, fromID, toTime, heimdallHeight, limit any) *MockClientFetchStateSyncEventsAtHeightCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchStateSyncEventsAtHeight", reflect.TypeOf((*MockClient)(nil).FetchStateSyncEventsAtHeight), ctx, fromID, toTime, heimdallHeight, limit)
+	return &MockClientFetchStateSyncEventsAtHeightCall{Call: call}
+}
+
+// MockClientFetchStateSyncEventsAtHeightCall wrap *gomock.Call
+type MockClientFetchStateSyncEventsAtHeightCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClientFetchStateSyncEventsAtHeightCall) Return(arg0 []*EventRecordWithTime, arg1 error) *MockClientFetchStateSyncEventsAtHeightCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClientFetchStateSyncEventsAtHeightCall) Do(f func(context.Context, uint64, int64, int64, int) ([]*EventRecordWithTime, error)) *MockClientFetchStateSyncEventsAtHeightCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClientFetchStateSyncEventsAtHeightCall) DoAndReturn(f func(context.Context, uint64, int64, int64, int) ([]*EventRecordWithTime, error)) *MockClientFetchStateSyncEventsAtHeightCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // FetchStateSyncEvents mocks base method.
 func (m *MockClient) FetchStateSyncEvents(ctx context.Context, fromId uint64, to time.Time, limit int) ([]*EventRecordWithTime, error) {
 	m.ctrl.T.Helper()

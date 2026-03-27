@@ -140,6 +140,11 @@ type StateSyncEventsResponse struct {
 	Result []*EventRecordWithTime `json:"result"`
 }
 
+// BlockHeightByTimeResponseV2 is the response from Heimdall V2 /clerk/block-height-by-time
+type BlockHeightByTimeResponseV2 struct {
+	Height string `json:"height"`
+}
+
 type StateSyncEventsResponseV2 struct {
 	EventRecords []struct {
 		ID       string         `json:"id" yaml:"id"`

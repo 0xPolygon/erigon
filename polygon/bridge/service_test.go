@@ -571,3 +571,180 @@ func TestReaderEventsWithinTime(t *testing.T) {
 	cancel()
 	wg.Wait()
 }
+
+// BorConfigWithDeterministicSSFork enables DeterministicStateSync from the first sprint
+var BorConfigWithDeterministicSSFork = borcfg.BorConfig{
+	Sprint:                      map[string]uint64{"0": 2},
+	StateReceiverContract:       "0x0000000000000000000000000000000000001001",
+	IndoreBlock:                 big.NewInt(0),
+	StateSyncConfirmationDelay:  map[string]uint64{"0": 1},
+	DeterministicStateSyncBlock: big.NewInt(2),
+}
+
+func prepareDeterministicService(t *testing.T, ctx context.Context, b *Service) {
+	t.Helper()
+	err := b.store.Prepare(ctx)
+	require.NoError(t, err)
+	genesis := types.NewBlockWithHeader(&types.Header{Time: 1, Number: big.NewInt(0)})
+	err = b.ReplayInitialBlock(ctx, genesis)
+	require.NoError(t, err)
+}
+
+// TestService_DeterministicPath verifies that after DeterministicStateSyncBlock, events are
+// resolved via FetchBlockHeightByTime + FetchStateSyncEventsAtHeight and mapped correctly.
+func TestService_DeterministicPath(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	heimdallClient, b := setup(t, BorConfigWithDeterministicSSFork)
+
+	event1 := &EventRecordWithTime{
+		EventRecord: EventRecord{ID: 1, ChainID: "80002", Data: hexutil.MustDecode("0x01")},
+		Time:        time.Unix(50, 0),
+	}
+	event2 := &EventRecordWithTime{
+		EventRecord: EventRecord{ID: 2, ChainID: "80002", Data: hexutil.MustDecode("0x02")},
+		Time:        time.Unix(90, 0),
+	}
+	event3 := &EventRecordWithTime{
+		EventRecord: EventRecord{ID: 3, ChainID: "80002", Data: hexutil.MustDecode("0x03")},
+		Time:        time.Unix(150, 0),
+	}
+	event1Data, err := event1.MarshallBytes()
+	require.NoError(t, err)
+	event2Data, err := event2.MarshallBytes()
+	require.NoError(t, err)
+	event3Data, err := event3.MarshallBytes()
+	require.NoError(t, err)
+
+	// Scraper: the first call (fromId=1) returns all three events; later calls return empty.
+	heimdallClient.EXPECT().
+		FetchStateSyncEvents(gomock.Any(), uint64(1), gomock.Any(), gomock.Any()).
+		Return([]*EventRecordWithTime{event1, event2, event3}, nil).
+		Times(1)
+	heimdallClient.EXPECT().
+		FetchStateSyncEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return([]*EventRecordWithTime{}, nil).
+		AnyTimes()
+
+	// Deterministic-path expectations for each of the three post-fork sprint starts.
+	const H = int64(500)
+	heimdallClient.EXPECT().FetchBlockHeightByTime(gomock.Any(), int64(99)).Return(H, nil)
+	heimdallClient.EXPECT().
+		FetchStateSyncEventsAtHeight(gomock.Any(), uint64(1), int64(99), H, 0).
+		Return([]*EventRecordWithTime{event1, event2}, nil)
+
+	heimdallClient.EXPECT().FetchBlockHeightByTime(gomock.Any(), int64(199)).Return(H, nil)
+	heimdallClient.EXPECT().
+		FetchStateSyncEventsAtHeight(gomock.Any(), uint64(3), int64(199), H, 0).
+		Return([]*EventRecordWithTime{event3}, nil)
+
+	heimdallClient.EXPECT().FetchBlockHeightByTime(gomock.Any(), int64(299)).Return(H, nil)
+	heimdallClient.EXPECT().
+		FetchStateSyncEventsAtHeight(gomock.Any(), uint64(4), int64(299), H, 0).
+		Return([]*EventRecordWithTime{}, nil)
+
+	// Run scraper goroutine so waitForScraperByEventId can unblock.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := b.Run(ctx); err != nil && !errors.Is(err, ctx.Err()) {
+			t.Error(err)
+		}
+	}()
+
+	prepareDeterministicService(t, ctx, b)
+
+	blocks := getBlocks(t, 6)
+	err = b.ProcessNewBlocks(ctx, blocks)
+	require.NoError(t, err)
+
+	res, err := b.Events(ctx, blocks[1].Hash(), 2)
+	require.NoError(t, err)
+	require.Len(t, res, 2)
+	require.Equal(t, event1Data, res[0].Data())
+	require.Equal(t, event2Data, res[1].Data())
+
+	res, err = b.Events(ctx, blocks[3].Hash(), 4)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	require.Equal(t, event3Data, res[0].Data())
+
+	res, err = b.Events(ctx, blocks[5].Hash(), 6)
+	require.NoError(t, err)
+	require.Empty(t, res)
+
+	cancel()
+	wg.Wait()
+}
+
+// TestService_DeterministicPath_HeightLookupError verifies that FetchBlockHeightByTime
+// failures are surfaced as errors.
+func TestService_DeterministicPath_HeightLookupError(t *testing.T) {
+	ctx := context.Background()
+	heimdallClient, b := setup(t, BorConfigWithDeterministicSSFork)
+	prepareDeterministicService(t, ctx, b)
+
+	lookupErr := errors.New("heimdall unreachable")
+	heimdallClient.EXPECT().FetchBlockHeightByTime(gomock.Any(), int64(99)).Return(int64(0), lookupErr)
+
+	err := b.ProcessNewBlocks(ctx, getBlocks(t, 2))
+	require.ErrorContains(t, err, "deterministic state sync")
+	require.ErrorIs(t, err, lookupErr)
+}
+
+// TestService_DeterministicPath_EventsFetchError verifies that FetchStateSyncEventsAtHeight
+// failures are surfaced as errors.
+func TestService_DeterministicPath_EventsFetchError(t *testing.T) {
+	ctx := context.Background()
+	heimdallClient, b := setup(t, BorConfigWithDeterministicSSFork)
+	prepareDeterministicService(t, ctx, b)
+
+	fetchErr := errors.New("clerk query failed")
+	heimdallClient.EXPECT().FetchBlockHeightByTime(gomock.Any(), int64(99)).Return(int64(500), nil)
+	heimdallClient.EXPECT().
+		FetchStateSyncEventsAtHeight(gomock.Any(), uint64(1), int64(99), int64(500), 0).
+		Return(nil, fetchErr)
+
+	err := b.ProcessNewBlocks(ctx, getBlocks(t, 2))
+	require.ErrorContains(t, err, "deterministic state sync")
+	require.ErrorIs(t, err, fetchErr)
+}
+
+// TestService_DeterministicPath_NonContiguousEvents verifies that a gap in the returned
+// event IDs is rejected, preventing an incorrect endId from being committed.
+func TestService_DeterministicPath_NonContiguousEvents(t *testing.T) {
+	ctx := context.Background()
+	heimdallClient, b := setup(t, BorConfigWithDeterministicSSFork)
+	prepareDeterministicService(t, ctx, b)
+
+	event1 := &EventRecordWithTime{EventRecord: EventRecord{ID: 1}}
+	event3 := &EventRecordWithTime{EventRecord: EventRecord{ID: 3}} // ID 2 missing
+
+	heimdallClient.EXPECT().FetchBlockHeightByTime(gomock.Any(), int64(99)).Return(int64(500), nil)
+	heimdallClient.EXPECT().
+		FetchStateSyncEventsAtHeight(gomock.Any(), uint64(1), int64(99), int64(500), 0).
+		Return([]*EventRecordWithTime{event1, event3}, nil)
+
+	err := b.ProcessNewBlocks(ctx, getBlocks(t, 2))
+	require.ErrorContains(t, err, "non-contiguous")
+}
+
+// TestService_DeterministicPath_WrongFirstEventId verifies that a response not starting at
+// startId is rejected instead of silently skipping earlier unprocessed events.
+func TestService_DeterministicPath_WrongFirstEventId(t *testing.T) {
+	ctx := context.Background()
+	heimdallClient, b := setup(t, BorConfigWithDeterministicSSFork)
+	prepareDeterministicService(t, ctx, b)
+
+	event2 := &EventRecordWithTime{EventRecord: EventRecord{ID: 2}} // startId is 1
+
+	heimdallClient.EXPECT().FetchBlockHeightByTime(gomock.Any(), int64(99)).Return(int64(500), nil)
+	heimdallClient.EXPECT().
+		FetchStateSyncEventsAtHeight(gomock.Any(), uint64(1), int64(99), int64(500), 0).
+		Return([]*EventRecordWithTime{event2}, nil)
+
+	err := b.ProcessNewBlocks(ctx, getBlocks(t, 2))
+	require.ErrorContains(t, err, "expected 1")
+}

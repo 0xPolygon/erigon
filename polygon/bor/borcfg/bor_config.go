@@ -220,6 +220,10 @@ func (c *BorConfig) IsDandeli(number uint64) bool {
 	return isForked(c.DandeliBlock, number)
 }
 
+func (c *BorConfig) GetDandeliBlock() *big.Int {
+	return c.DandeliBlock
+}
+
 func (c *BorConfig) IsLisovo(number uint64) bool {
 	return isForked(c.LisovoBlock, number)
 }

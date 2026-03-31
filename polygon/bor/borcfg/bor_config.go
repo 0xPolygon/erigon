@@ -38,20 +38,21 @@ type BorConfig struct {
 	OverrideValidatorSetInRange []BlockRangeOverrideValidatorSet `json:"overrideValidatorSetInRange"` // override validator set in a given block range
 	BlockAlloc                  map[string]interface{}           `json:"blockAlloc"`
 
-	JaipurBlock                 *big.Int `json:"jaipurBlock"`                 // Jaipur switch block (nil = no fork, 0 = already on Jaipur)
-	DelhiBlock                  *big.Int `json:"delhiBlock"`                  // Delhi switch block (nil = no fork, 0 = already on Delhi)
-	IndoreBlock                 *big.Int `json:"indoreBlock"`                 // Indore switch block (nil = no fork, 0 = already on Indore)
-	AgraBlock                   *big.Int `json:"agraBlock"`                   // Agra switch block (nil = no fork, 0 = already on Agra)
-	NapoliBlock                 *big.Int `json:"napoliBlock"`                 // Napoli switch block (nil = no fork, 0 = already on Napoli)
-	AhmedabadBlock              *big.Int `json:"ahmedabadBlock"`              // Ahmedabad switch block (nil = no fork, 0 = already on Ahmedabad)
-	BhilaiBlock                 *big.Int `json:"bhilaiBlock"`                 // Bhilai switch block (nil = no fork, 0 = already on Ahmedabad)
-	RioBlock                    *big.Int `json:"rioBlock"`                    // Rio switch block (nil = no fork, 0 = already on Rio)
-	MadhugiriBlock              *big.Int `json:"madhugiriBlock"`              // Madhugiri switch block (nil = no fork, 0 = already on Madhugiri)
-	MadhugiriProBlock           *big.Int `json:"madhugiriProBlock"`           // MadhugiriPro switch block (nil = no fork, 0 = already on MadhugiriPro)
-	DandeliBlock                *big.Int `json:"dandeliBlock"`                // Dandeli switch block (nil = no fork, 0 = already on Dandeli)
-	LisovoBlock                 *big.Int `json:"lisovoBlock"`                 // Lisovo switch block (nil = no fork, 0 = already on Lisovo)
-	LisovoProBlock              *big.Int `json:"lisovoProBlock"`              // LisovoPro switch block (nil = no fork, 0 = already on LisovoPro)
-	GiuglianoBlock              *big.Int `json:"giuglianoBlock"`              // Giugliano switch block (nil = no fork, 0 = already on Giugliano)
+	JaipurBlock       *big.Int `json:"jaipurBlock"`       // Jaipur switch block (nil = no fork, 0 = already on Jaipur)
+	DelhiBlock        *big.Int `json:"delhiBlock"`        // Delhi switch block (nil = no fork, 0 = already on Delhi)
+	IndoreBlock       *big.Int `json:"indoreBlock"`       // Indore switch block (nil = no fork, 0 = already on Indore)
+	AgraBlock         *big.Int `json:"agraBlock"`         // Agra switch block (nil = no fork, 0 = already on Agra)
+	NapoliBlock       *big.Int `json:"napoliBlock"`       // Napoli switch block (nil = no fork, 0 = already on Napoli)
+	AhmedabadBlock    *big.Int `json:"ahmedabadBlock"`    // Ahmedabad switch block (nil = no fork, 0 = already on Ahmedabad)
+	BhilaiBlock       *big.Int `json:"bhilaiBlock"`       // Bhilai switch block (nil = no fork, 0 = already on Ahmedabad)
+	RioBlock          *big.Int `json:"rioBlock"`          // Rio switch block (nil = no fork, 0 = already on Rio)
+	MadhugiriBlock    *big.Int `json:"madhugiriBlock"`    // Madhugiri switch block (nil = no fork, 0 = already on Madhugiri)
+	MadhugiriProBlock *big.Int `json:"madhugiriProBlock"` // MadhugiriPro switch block (nil = no fork, 0 = already on MadhugiriPro)
+	DandeliBlock      *big.Int `json:"dandeliBlock"`      // Dandeli switch block (nil = no fork, 0 = already on Dandeli)
+	LisovoBlock       *big.Int `json:"lisovoBlock"`       // Lisovo switch block (nil = no fork, 0 = already on Lisovo)
+	LisovoProBlock    *big.Int `json:"lisovoProBlock"`    // LisovoPro switch block (nil = no fork, 0 = already on LisovoPro)
+	GiuglianoBlock    *big.Int `json:"giuglianoBlock"`    // Giugliano switch block (nil = no fork, 0 = already on Giugliano)
+	// TODO marcello define HF block's height
 	DeterministicStateSyncBlock *big.Int `json:"deterministicStateSyncBlock"` // DeterministicStateSync switch block (nil = no fork, 0 = already on DeterministicStateSync)
 
 	StateSyncConfirmationDelay map[string]uint64         `json:"stateSyncConfirmationDelay"` // StateSync Confirmation Delay, in seconds, to calculate `to`

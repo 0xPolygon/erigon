@@ -175,7 +175,7 @@ func TestCreation(t *testing.T) {
 				{29287400, 0, ID{Hash: ChecksumToBytes(0xed8fee6a), Activation: 29287400, Next: 31890000}}, // First MadhugiriPro block
 				{31890000, 0, ID{Hash: ChecksumToBytes(0xbd22e320), Activation: 31890000, Next: 33634700}}, // First Dandeli block
 				{33634700, 0, ID{Hash: ChecksumToBytes(0x4d6e8920), Activation: 33634700, Next: 34062000}}, // First Lisovo block
-				{34062000, 0, ID{Hash: ChecksumToBytes(0x0d260e78), Activation: 34062000, Next: 35573500}},   // First LisovoPro block
+				{34062000, 0, ID{Hash: ChecksumToBytes(0x0d260e78), Activation: 34062000, Next: 35573500}}, // First LisovoPro block
 				{35573500, 0, ID{Hash: ChecksumToBytes(0x3e0e0e8d), Activation: 35573500, Next: 0}},        // First Giugliano block
 				{40000000, 0, ID{Hash: ChecksumToBytes(0x3e0e0e8d), Activation: 35573500, Next: 0}},        // Future block
 			},
@@ -194,7 +194,7 @@ func TestCreation(t *testing.T) {
 				{77414656, 0, ID{Hash: ChecksumToBytes(0x35b749f1), Activation: 77414656, Next: 80084800}}, // First Rio block
 				{80084800, 0, ID{Hash: ChecksumToBytes(0x14809032), Activation: 80084800, Next: 81424000}}, // First Madhugiri+MadhugiriPro block
 				{81424000, 0, ID{Hash: ChecksumToBytes(0xdf683a77), Activation: 81424000, Next: 83756500}}, // First Dandeli block
-				{83756500, 0, ID{Hash: ChecksumToBytes(0xec57f346), Activation: 83756500, Next: 85268500}},   // First Lisovo+LisovoPro block
+				{83756500, 0, ID{Hash: ChecksumToBytes(0xec57f346), Activation: 83756500, Next: 85268500}}, // First Lisovo+LisovoPro block
 				{85268500, 0, ID{Hash: ChecksumToBytes(0x961bfb5b), Activation: 85268500, Next: 0}},        // First Giugliano block
 				{90000000, 0, ID{Hash: ChecksumToBytes(0x961bfb5b), Activation: 85268500, Next: 0}},        // Future block
 			},

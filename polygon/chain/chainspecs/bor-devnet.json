@@ -52,8 +52,7 @@
     "delhiBlock": 0,
     "indoreBlock": 0,
     "agraBlock": 100,
-    "napoliBlock": 100,
-    "deterministicStateSyncBlock": 500
+    "napoliBlock": 100
   },
   "defaultBlockGasLimit": 45000000
 }

@@ -19,6 +19,7 @@ package jsonrpc
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"math"
 	"math/big"
 	"os"
@@ -40,6 +41,8 @@ import (
 	"github.com/erigontech/erigon/execution/stages/mock"
 	"github.com/erigontech/erigon/execution/types"
 )
+
+var updateGolden = flag.Bool("update", false, "update golden test files")
 
 func TestGasPrice(t *testing.T) {
 
@@ -80,6 +83,13 @@ func TestGasPrice(t *testing.T) {
 
 }
 
+// TestEthConfig compares eth_config RPC responses against golden files in testdata/eth_config/.
+// Golden files may go stale when fork configs or precompile sets change (e.g., new HF, precompile added).
+// To regenerate all golden files after an intentional change:
+//
+//	go test ./rpc/jsonrpc/ -run TestEthConfig -update
+//
+// Then review the diff under testdata/eth_config/ and commit.
 func TestEthConfig(t *testing.T) {
 	t.Parallel()
 	toTimeArg := func(t hexutil.Uint64) *hexutil.Uint64 { return &t }
@@ -194,9 +204,16 @@ func TestEthConfig(t *testing.T) {
 			require.ErrorIs(t, err, test.wantIsError)
 			haveResponseBytes, err := json.MarshalIndent(result, "", "    ")
 			require.NoError(t, err)
+			have := string(haveResponseBytes)
+			if *updateGolden {
+				err := os.WriteFile(test.wantResponseFilePath, haveResponseBytes, 0644)
+				require.NoError(t, err)
+				t.Logf("updated golden file: %s", test.wantResponseFilePath)
+				return
+			}
 			wantResponseBytes, err := os.ReadFile(test.wantResponseFilePath)
 			require.NoError(t, err)
-			want, have := string(wantResponseBytes), string(haveResponseBytes)
+			want := string(wantResponseBytes)
 			// replace \r\n with \n is necessary for CI on windows
 			want, have = strings.ReplaceAll(want, "\r\n", "\n"), strings.ReplaceAll(have, "\r\n", "\n")
 			require.Equal(t, want, have)

@@ -418,6 +418,19 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 					return fmt.Errorf("deterministic state sync: failed to fetch events at Heimdall height %d: %w", heimdallHeight, err)
 				}
 
+				// Filter events by record_time < to_time, matching bor's validateEventRecord behavior.
+				// Heimdall filters by visibility_height but may return events whose record_time
+				// is at or after the cutoff — these must be excluded for cross-client consistency.
+				toTimestamp := time.Unix(int64(toTime), 0)
+				filtered := events[:0]
+				for _, e := range events {
+					if !e.Time.Before(toTimestamp) {
+						break
+					}
+					filtered = append(filtered, e)
+				}
+				events = filtered
+
 				if len(events) > 0 {
 					// Validate that Heimdall returned a contiguous prefix starting from startId.
 					if events[0].ID != startId {

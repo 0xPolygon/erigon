@@ -594,10 +594,14 @@ func (s *Service) waitForScraperByEventId(ctx context.Context, targetEventId uin
 	shouldLog := true
 	reachedTip := s.reachedTip.Load()
 	lastFetchedEventId := s.lastFetchedEventId.Load()
-	for !reachedTip && lastFetchedEventId < targetEventId {
+	for lastFetchedEventId < targetEventId {
+		if reachedTip {
+			return fmt.Errorf("event scraper reached tip at event %d but target event %d not yet available", lastFetchedEventId, targetEventId)
+		}
+
 		if shouldLog {
 			s.logger.Debug(
-				bridgeLogPrefix("waiting for event scrapping to catch up (by event ID)"),
+				bridgeLogPrefix("waiting for event scraping to catch up (by event ID)"),
 				"reachedTip", reachedTip,
 				"lastFetchedEventId", lastFetchedEventId,
 				"targetEventId", targetEventId,

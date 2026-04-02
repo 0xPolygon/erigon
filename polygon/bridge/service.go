@@ -410,17 +410,29 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 			if s.borConfig.IsDeterministicStateSync(blockNum) {
 				heimdallHeight, err := s.eventFetcher.FetchBlockHeightByTime(ctx, int64(toTime))
 				if err != nil {
-					return fmt.Errorf("deterministic state sync: failed to resolve Heimdall height for cutoff %d: %w", toTime, err)
+					// Log and skip
+					s.logger.Error(
+						bridgeLogPrefix("deterministic state sync: failed to resolve Heimdall height, skipping"),
+						"cutoff", toTime,
+						"blockNum", blockNum,
+						"err", err,
+					)
+					break
 				}
 
 				events, err := s.eventFetcher.FetchStateSyncEventsAtHeight(ctx, startId, int64(toTime), heimdallHeight, 0)
 				if err != nil {
-					return fmt.Errorf("deterministic state sync: failed to fetch events at Heimdall height %d: %w", heimdallHeight, err)
+					// Log and skip
+					s.logger.Error(
+						bridgeLogPrefix("deterministic state sync: failed to fetch events, skipping"),
+						"heimdallHeight", heimdallHeight,
+						"blockNum", blockNum,
+						"err", err,
+					)
+					break
 				}
 
-				// Filter events by record_time < to_time, matching bor's validateEventRecord behavior.
-				// Heimdall filters by visibility_height but may return events whose record_time
-				// is at or after the cutoff — these must be excluded for cross-client consistency.
+				// Filter events by record_time < to_time
 				toTimestamp := time.Unix(int64(toTime), 0)
 				filtered := events[:0]
 				for _, e := range events {
@@ -432,21 +444,35 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 				events = filtered
 
 				if len(events) > 0 {
-					// Validate that Heimdall returned a contiguous prefix starting from startId.
+					// The first event must be startId (lastStateID+1),
+					// then process contiguous events from there and stop at the first gap
 					if events[0].ID != startId {
-						return fmt.Errorf("deterministic state sync: Heimdall returned first event ID %d, expected %d (heimdall height %d)", events[0].ID, startId, heimdallHeight)
-					}
-					for i := 1; i < len(events); i++ {
-						if events[i].ID != events[i-1].ID+1 {
-							return fmt.Errorf("deterministic state sync: non-contiguous event IDs from Heimdall: %d followed by %d (heimdall height %d)", events[i-1].ID, events[i].ID, heimdallHeight)
+						s.logger.Warn(
+							bridgeLogPrefix("deterministic state sync: event ID gap at start, skipping block"),
+							"expected", startId,
+							"got", events[0].ID,
+							"heimdallHeight", heimdallHeight,
+							"blockNum", blockNum,
+						)
+					} else {
+						// Find the contiguous prefix, then break: use events up to the first gap.
+						lastContiguousIdx := 0
+						for i := 1; i < len(events); i++ {
+							if events[i].ID != events[i-1].ID+1 {
+								s.logger.Warn(
+									bridgeLogPrefix("deterministic state sync: gap in batch, using contiguous prefix"),
+									"prevId", events[i-1].ID,
+									"nextId", events[i].ID,
+									"contiguousCount", i,
+									"blockNum", blockNum,
+								)
+								break
+							}
+							lastContiguousIdx = i
 						}
-					}
 
-					lastEventId := events[len(events)-1].ID
-					if err = s.waitForScraperByEventId(ctx, lastEventId); err != nil {
-						return err
+						endId = events[lastContiguousIdx].ID
 					}
-					endId = lastEventId
 				}
 			} else {
 				if err = s.waitForScraper(ctx, toTime); err != nil {

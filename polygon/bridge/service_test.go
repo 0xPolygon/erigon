@@ -680,7 +680,7 @@ func TestService_DeterministicPath(t *testing.T) {
 }
 
 // TestService_DeterministicPath_HeightLookupError verifies that FetchBlockHeightByTime
-// failures are surfaced as errors.
+// failures are handled gracefully (log + skip), matching bor's pre-fork resilience.
 func TestService_DeterministicPath_HeightLookupError(t *testing.T) {
 	ctx := context.Background()
 	heimdallClient, b := setup(t, BorConfigWithDeterministicSSFork)
@@ -690,12 +690,11 @@ func TestService_DeterministicPath_HeightLookupError(t *testing.T) {
 	heimdallClient.EXPECT().FetchBlockHeightByTime(gomock.Any(), int64(99)).Return(int64(0), lookupErr)
 
 	err := b.ProcessNewBlocks(ctx, getBlocks(t, 2))
-	require.ErrorContains(t, err, "deterministic state sync")
-	require.ErrorIs(t, err, lookupErr)
+	require.NoError(t, err) // logs and skips, no fatal error
 }
 
 // TestService_DeterministicPath_EventsFetchError verifies that FetchStateSyncEventsAtHeight
-// failures are surfaced as errors.
+// failures are handled gracefully (log + skip), matching bor's pre-fork resilience.
 func TestService_DeterministicPath_EventsFetchError(t *testing.T) {
 	ctx := context.Background()
 	heimdallClient, b := setup(t, BorConfigWithDeterministicSSFork)
@@ -708,12 +707,12 @@ func TestService_DeterministicPath_EventsFetchError(t *testing.T) {
 		Return(nil, fetchErr)
 
 	err := b.ProcessNewBlocks(ctx, getBlocks(t, 2))
-	require.ErrorContains(t, err, "deterministic state sync")
-	require.ErrorIs(t, err, fetchErr)
+	require.NoError(t, err) // logs and skips, no fatal error
 }
 
 // TestService_DeterministicPath_NonContiguousEvents verifies that a gap in the returned
-// event IDs is rejected, preventing an incorrect endId from being committed.
+// event IDs causes processing to stop at the gap point (contiguous prefix is used),
+// matching bor's validateEventRecord behavior which processes sequential events then breaks.
 func TestService_DeterministicPath_NonContiguousEvents(t *testing.T) {
 	ctx := context.Background()
 	heimdallClient, b := setup(t, BorConfigWithDeterministicSSFork)
@@ -728,11 +727,12 @@ func TestService_DeterministicPath_NonContiguousEvents(t *testing.T) {
 		Return([]*EventRecordWithTime{event1, event3}, nil)
 
 	err := b.ProcessNewBlocks(ctx, getBlocks(t, 2))
-	require.ErrorContains(t, err, "non-contiguous")
+	require.NoError(t, err) // uses contiguous prefix (event1 only), no fatal error
 }
 
 // TestService_DeterministicPath_WrongFirstEventId verifies that a response not starting at
-// startId is rejected instead of silently skipping earlier unprocessed events.
+// startId causes the block to be skipped (0 state syncs), matching bor's validateEventRecord
+// which logs the error and breaks when lastStateID+1 != eventRecord.ID.
 func TestService_DeterministicPath_WrongFirstEventId(t *testing.T) {
 	ctx := context.Background()
 	heimdallClient, b := setup(t, BorConfigWithDeterministicSSFork)
@@ -746,5 +746,5 @@ func TestService_DeterministicPath_WrongFirstEventId(t *testing.T) {
 		Return([]*EventRecordWithTime{event2}, nil)
 
 	err := b.ProcessNewBlocks(ctx, getBlocks(t, 2))
-	require.ErrorContains(t, err, "expected 1")
+	require.NoError(t, err) // logs warning and skips, no fatal error
 }

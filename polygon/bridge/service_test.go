@@ -627,8 +627,6 @@ func TestService_DeterministicPath(t *testing.T) {
 		Return([]*EventRecordWithTime{}, nil).
 		AnyTimes()
 
-	// Deterministic-path expectations for each of the three post-fork sprint starts.
-	// Uses the combined FetchStateSyncEventsByTime endpoint (heimdall resolves height internally).
 	heimdallClient.EXPECT().
 		FetchStateSyncEventsByTime(gomock.Any(), uint64(1), int64(99), 0).
 		Return([]*EventRecordWithTime{event1, event2}, nil)

@@ -338,6 +338,7 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 
 	blockNumToEventId := make(map[uint64]uint64)
 	eventTxnToBlockNum := make(map[common.Hash]uint64)
+	var deterministicEvents []*EventRecordWithTime // events fetched via deterministic path to persist
 	processedBlocks := make([]ProcessedBlockInfo, 0, 1+len(blocks)/int(s.borConfig.CalculateSprintLength(from)))
 	for _, block := range blocks {
 		// check if block is start of span and > 0
@@ -409,9 +410,15 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 
 		if eventLimit == nil || *eventLimit > 0 {
 			if s.borConfig.IsDeterministicStateSync(blockNum) {
+				s.logger.Debug(
+					bridgeLogPrefix("deterministic state sync query"),
+					"blockNum", blockNum,
+					"startId", startId,
+					"toTime", toTime,
+					"lastProcessedEventId", lastProcessedEventId,
+				)
 				events, err := s.eventFetcher.FetchStateSyncEventsByTime(ctx, startId, int64(toTime), 0)
 				if err != nil {
-					// Match bor's pre-fork resilience: log and skip, don't crash.
 					s.logger.Error(
 						bridgeLogPrefix("deterministic state sync: failed to fetch events, skipping"),
 						"blockNum", blockNum,
@@ -461,6 +468,10 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 						}
 
 						endId = events[lastContiguousIdx].ID
+						// Persist the deterministic event payloads so EventsByBlock
+						// reads the same data that the mapping references. The scraper
+						// may have different or missing data for these IDs.
+						deterministicEvents = append(deterministicEvents, events[:lastContiguousIdx+1]...)
 					}
 				}
 			} else {
@@ -510,6 +521,16 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 
 	if len(processedBlocks) == 0 {
 		return nil
+	}
+
+	// Persist deterministic event payloads before the mapping, so EventsByBlock
+	// reads consistent data. This is needed because the scraper (which normally
+	// populates kv.BorEvents) uses the old endpoint and may have different
+	// or missing data for events fetched via the deterministic path.
+	if len(deterministicEvents) > 0 {
+		if err := s.store.PutEvents(ctx, deterministicEvents); err != nil {
+			return err
+		}
 	}
 
 	if err := s.store.PutBlockNumToEventId(ctx, blockNumToEventId); err != nil {

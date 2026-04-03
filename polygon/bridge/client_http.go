@@ -55,6 +55,9 @@ const (
 	fetchBlockHeightByTimeFormatV2   = "cutoff_time=%d"
 	fetchStateSyncEventsAtHeightPath = "clerk/state-syncs-at-height"
 	fetchStateSyncEventsAtHeightFmt  = "from_id=%d&heimdall_height=%d&to_time=%s&pagination.limit=%d"
+
+	fetchStateSyncEventsByTimePath = "clerk/state-syncs-by-time"
+	fetchStateSyncEventsByTimeFmt  = "from_id=%d&to_time=%s&pagination.limit=%d"
 )
 
 func (c *HttpClient) FetchStateSyncEvents(ctx context.Context, fromID uint64, to time.Time, limit int) ([]*EventRecordWithTime, error) {
@@ -250,4 +253,58 @@ func stateSyncEventsAtHeightURLv2(urlString string, fromID uint64, heimdallHeigh
 	formattedTime := t.Format(time.RFC3339Nano)
 	queryParams := fmt.Sprintf(fetchStateSyncEventsAtHeightFmt, fromID, heimdallHeight, formattedTime, StateEventsFetchLimit)
 	return poshttp.MakeURL(urlString, fetchStateSyncEventsAtHeightPath, queryParams)
+}
+
+func (c *HttpClient) FetchStateSyncEventsByTime(ctx context.Context, fromID uint64, toTime int64, limit int) ([]*EventRecordWithTime, error) {
+	if c.Version() != poshttp.HeimdallV2 {
+		return nil, errors.New("FetchStateSyncEventsByTime requires Heimdall V2")
+	}
+
+	eventRecords := make([]*EventRecordWithTime, 0)
+
+	for {
+		u, err := stateSyncEventsByTimeURLv2(c.UrlString, fromID, toTime)
+		if err != nil {
+			return nil, err
+		}
+
+		c.Logger.Trace(bridgeLogPrefix("Fetching state sync events by time"), "queryParams", u.RawQuery)
+
+		reqCtx := poshttp.WithRequestType(ctx, poshttp.StateSyncRequest)
+
+		response, err := poshttp.FetchWithRetry[StateSyncEventsResponseV2](reqCtx, c.Client, u, c.Logger)
+		if err != nil {
+			return nil, err
+		}
+
+		if response == nil || response.EventRecords == nil {
+			break
+		}
+
+		records, err := response.GetEventRecords()
+		if err != nil {
+			return nil, err
+		}
+
+		eventRecords = append(eventRecords, records...)
+
+		if len(response.EventRecords) < StateEventsFetchLimit || (limit > 0 && len(eventRecords) >= limit) {
+			break
+		}
+
+		fromID += uint64(StateEventsFetchLimit)
+	}
+
+	sort.SliceStable(eventRecords, func(i, j int) bool {
+		return eventRecords[i].ID < eventRecords[j].ID
+	})
+
+	return eventRecords, nil
+}
+
+func stateSyncEventsByTimeURLv2(urlString string, fromID uint64, toTime int64) (*url.URL, error) {
+	t := time.Unix(toTime, 0).UTC()
+	formattedTime := t.Format(time.RFC3339Nano)
+	queryParams := fmt.Sprintf(fetchStateSyncEventsByTimeFmt, fromID, formattedTime, StateEventsFetchLimit)
+	return poshttp.MakeURL(urlString, fetchStateSyncEventsByTimePath, queryParams)
 }

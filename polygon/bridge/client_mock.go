@@ -155,6 +155,45 @@ func (c *MockClientFetchStateSyncEventsAtHeightCall) DoAndReturn(f func(context.
 	return c
 }
 
+// FetchStateSyncEventsByTime mocks base method.
+func (m *MockClient) FetchStateSyncEventsByTime(ctx context.Context, fromID uint64, toTime int64, limit int) ([]*EventRecordWithTime, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchStateSyncEventsByTime", ctx, fromID, toTime, limit)
+	ret0, _ := ret[0].([]*EventRecordWithTime)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchStateSyncEventsByTime indicates an expected call of FetchStateSyncEventsByTime.
+func (mr *MockClientMockRecorder) FetchStateSyncEventsByTime(ctx, fromID, toTime, limit any) *MockClientFetchStateSyncEventsByTimeCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchStateSyncEventsByTime", reflect.TypeOf((*MockClient)(nil).FetchStateSyncEventsByTime), ctx, fromID, toTime, limit)
+	return &MockClientFetchStateSyncEventsByTimeCall{Call: call}
+}
+
+// MockClientFetchStateSyncEventsByTimeCall wrap *gomock.Call
+type MockClientFetchStateSyncEventsByTimeCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClientFetchStateSyncEventsByTimeCall) Return(arg0 []*EventRecordWithTime, arg1 error) *MockClientFetchStateSyncEventsByTimeCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClientFetchStateSyncEventsByTimeCall) Do(f func(context.Context, uint64, int64, int) ([]*EventRecordWithTime, error)) *MockClientFetchStateSyncEventsByTimeCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClientFetchStateSyncEventsByTimeCall) DoAndReturn(f func(context.Context, uint64, int64, int) ([]*EventRecordWithTime, error)) *MockClientFetchStateSyncEventsByTimeCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // FetchStateSyncEvents mocks base method.
 func (m *MockClient) FetchStateSyncEvents(ctx context.Context, fromId uint64, to time.Time, limit int) ([]*EventRecordWithTime, error) {
 	m.ctrl.T.Helper()

@@ -39,6 +39,7 @@ type eventFetcher interface {
 	FetchStateSyncEvents(ctx context.Context, fromId uint64, to time.Time, limit int) ([]*EventRecordWithTime, error)
 	FetchBlockHeightByTime(ctx context.Context, cutoffTime int64) (int64, error)
 	FetchStateSyncEventsAtHeight(ctx context.Context, fromID uint64, toTime int64, heimdallHeight int64, limit int) ([]*EventRecordWithTime, error)
+	FetchStateSyncEventsByTime(ctx context.Context, fromID uint64, toTime int64, limit int) ([]*EventRecordWithTime, error)
 }
 
 type ServiceConfig struct {
@@ -408,31 +409,18 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 
 		if eventLimit == nil || *eventLimit > 0 {
 			if s.borConfig.IsDeterministicStateSync(blockNum) {
-				heimdallHeight, err := s.eventFetcher.FetchBlockHeightByTime(ctx, int64(toTime))
+				events, err := s.eventFetcher.FetchStateSyncEventsByTime(ctx, startId, int64(toTime), 0)
 				if err != nil {
-					// Log and skip
-					s.logger.Error(
-						bridgeLogPrefix("deterministic state sync: failed to resolve Heimdall height, skipping"),
-						"cutoff", toTime,
-						"blockNum", blockNum,
-						"err", err,
-					)
-					break
-				}
-
-				events, err := s.eventFetcher.FetchStateSyncEventsAtHeight(ctx, startId, int64(toTime), heimdallHeight, 0)
-				if err != nil {
-					// Log and skip
+					// Match bor's pre-fork resilience: log and skip, don't crash.
 					s.logger.Error(
 						bridgeLogPrefix("deterministic state sync: failed to fetch events, skipping"),
-						"heimdallHeight", heimdallHeight,
 						"blockNum", blockNum,
 						"err", err,
 					)
 					break
 				}
 
-				// Filter events by record_time < to_time
+				// Filter events by record_time < to_time, matching bor's validateEventRecord behavior.
 				toTimestamp := time.Unix(int64(toTime), 0)
 				filtered := events[:0]
 				for _, e := range events {
@@ -444,18 +432,19 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 				events = filtered
 
 				if len(events) > 0 {
-					// The first event must be startId (lastStateID+1),
-					// then process contiguous events from there and stop at the first gap
+					// Match bor's validateEventRecord exactly:
+					// - First event must be startId (lastStateID+1)
+					// - Process contiguous events from startId
+					// - Stop at the first gap
 					if events[0].ID != startId {
 						s.logger.Warn(
-							bridgeLogPrefix("deterministic state sync: event ID gap at start, skipping block"),
+							bridgeLogPrefix("deterministic state sync: event ID gap at start, skipping block (matches bor)"),
 							"expected", startId,
 							"got", events[0].ID,
-							"heimdallHeight", heimdallHeight,
 							"blockNum", blockNum,
 						)
 					} else {
-						// Find the contiguous prefix, then break: use events up to the first gap.
+						// Find the contiguous prefix — stop at the first gap.
 						lastContiguousIdx := 0
 						for i := 1; i < len(events); i++ {
 							if events[i].ID != events[i-1].ID+1 {

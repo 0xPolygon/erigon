@@ -628,20 +628,17 @@ func TestService_DeterministicPath(t *testing.T) {
 		AnyTimes()
 
 	// Deterministic-path expectations for each of the three post-fork sprint starts.
-	const H = int64(500)
-	heimdallClient.EXPECT().FetchBlockHeightByTime(gomock.Any(), int64(99)).Return(H, nil)
+	// Uses the combined FetchStateSyncEventsByTime endpoint (heimdall resolves height internally).
 	heimdallClient.EXPECT().
-		FetchStateSyncEventsAtHeight(gomock.Any(), uint64(1), int64(99), H, 0).
+		FetchStateSyncEventsByTime(gomock.Any(), uint64(1), int64(99), 0).
 		Return([]*EventRecordWithTime{event1, event2}, nil)
 
-	heimdallClient.EXPECT().FetchBlockHeightByTime(gomock.Any(), int64(199)).Return(H, nil)
 	heimdallClient.EXPECT().
-		FetchStateSyncEventsAtHeight(gomock.Any(), uint64(3), int64(199), H, 0).
+		FetchStateSyncEventsByTime(gomock.Any(), uint64(3), int64(199), 0).
 		Return([]*EventRecordWithTime{event3}, nil)
 
-	heimdallClient.EXPECT().FetchBlockHeightByTime(gomock.Any(), int64(299)).Return(H, nil)
 	heimdallClient.EXPECT().
-		FetchStateSyncEventsAtHeight(gomock.Any(), uint64(4), int64(299), H, 0).
+		FetchStateSyncEventsByTime(gomock.Any(), uint64(4), int64(299), 0).
 		Return([]*EventRecordWithTime{}, nil)
 
 	// Run scraper goroutine so waitForScraperByEventId can unblock.
@@ -679,31 +676,16 @@ func TestService_DeterministicPath(t *testing.T) {
 	wg.Wait()
 }
 
-// TestService_DeterministicPath_HeightLookupError verifies that FetchBlockHeightByTime
+// TestService_DeterministicPath_FetchError verifies that FetchStateSyncEventsByTime
 // failures are handled gracefully (log + skip), matching bor's pre-fork resilience.
-func TestService_DeterministicPath_HeightLookupError(t *testing.T) {
+func TestService_DeterministicPath_FetchError(t *testing.T) {
 	ctx := context.Background()
 	heimdallClient, b := setup(t, BorConfigWithDeterministicSSFork)
 	prepareDeterministicService(t, ctx, b)
 
-	lookupErr := errors.New("heimdall unreachable")
-	heimdallClient.EXPECT().FetchBlockHeightByTime(gomock.Any(), int64(99)).Return(int64(0), lookupErr)
-
-	err := b.ProcessNewBlocks(ctx, getBlocks(t, 2))
-	require.NoError(t, err) // logs and skips, no fatal error
-}
-
-// TestService_DeterministicPath_EventsFetchError verifies that FetchStateSyncEventsAtHeight
-// failures are handled gracefully (log + skip), matching bor's pre-fork resilience.
-func TestService_DeterministicPath_EventsFetchError(t *testing.T) {
-	ctx := context.Background()
-	heimdallClient, b := setup(t, BorConfigWithDeterministicSSFork)
-	prepareDeterministicService(t, ctx, b)
-
-	fetchErr := errors.New("clerk query failed")
-	heimdallClient.EXPECT().FetchBlockHeightByTime(gomock.Any(), int64(99)).Return(int64(500), nil)
+	fetchErr := errors.New("heimdall unreachable")
 	heimdallClient.EXPECT().
-		FetchStateSyncEventsAtHeight(gomock.Any(), uint64(1), int64(99), int64(500), 0).
+		FetchStateSyncEventsByTime(gomock.Any(), uint64(1), int64(99), 0).
 		Return(nil, fetchErr)
 
 	err := b.ProcessNewBlocks(ctx, getBlocks(t, 2))
@@ -721,9 +703,8 @@ func TestService_DeterministicPath_NonContiguousEvents(t *testing.T) {
 	event1 := &EventRecordWithTime{EventRecord: EventRecord{ID: 1}}
 	event3 := &EventRecordWithTime{EventRecord: EventRecord{ID: 3}} // ID 2 missing
 
-	heimdallClient.EXPECT().FetchBlockHeightByTime(gomock.Any(), int64(99)).Return(int64(500), nil)
 	heimdallClient.EXPECT().
-		FetchStateSyncEventsAtHeight(gomock.Any(), uint64(1), int64(99), int64(500), 0).
+		FetchStateSyncEventsByTime(gomock.Any(), uint64(1), int64(99), 0).
 		Return([]*EventRecordWithTime{event1, event3}, nil)
 
 	err := b.ProcessNewBlocks(ctx, getBlocks(t, 2))
@@ -740,9 +721,8 @@ func TestService_DeterministicPath_WrongFirstEventId(t *testing.T) {
 
 	event2 := &EventRecordWithTime{EventRecord: EventRecord{ID: 2}} // startId is 1
 
-	heimdallClient.EXPECT().FetchBlockHeightByTime(gomock.Any(), int64(99)).Return(int64(500), nil)
 	heimdallClient.EXPECT().
-		FetchStateSyncEventsAtHeight(gomock.Any(), uint64(1), int64(99), int64(500), 0).
+		FetchStateSyncEventsByTime(gomock.Any(), uint64(1), int64(99), 0).
 		Return([]*EventRecordWithTime{event2}, nil)
 
 	err := b.ProcessNewBlocks(ctx, getBlocks(t, 2))

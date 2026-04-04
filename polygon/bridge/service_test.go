@@ -726,3 +726,85 @@ func TestService_DeterministicPath_WrongFirstEventId(t *testing.T) {
 	err := b.ProcessNewBlocks(ctx, getBlocks(t, 2))
 	require.NoError(t, err) // logs warning and skips, no fatal error
 }
+
+// TestService_DeterministicPath_PersistsEventPayloads verifies that events fetched via
+// the deterministic endpoint are persisted to kv.BorEvents so that EventsByBlock reads
+// consistent data during block execution.
+func TestService_DeterministicPath_PersistsEventPayloads(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	heimdallClient, b := setup(t, BorConfigWithDeterministicSSFork)
+
+	event1 := &EventRecordWithTime{
+		EventRecord: EventRecord{ID: 1, ChainID: "80002", Data: hexutil.MustDecode("0x01")},
+		Time:        time.Unix(50, 0),
+	}
+	event2 := &EventRecordWithTime{
+		EventRecord: EventRecord{ID: 2, ChainID: "80002", Data: hexutil.MustDecode("0x02")},
+		Time:        time.Unix(90, 0),
+	}
+
+	// Scraper returns empty (simulates scraper being behind)
+	heimdallClient.EXPECT().
+		FetchStateSyncEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return([]*EventRecordWithTime{}, nil).
+		AnyTimes()
+
+	// Deterministic endpoint returns events
+	heimdallClient.EXPECT().
+		FetchStateSyncEventsByTime(gomock.Any(), uint64(1), int64(99), 0).
+		Return([]*EventRecordWithTime{event1, event2}, nil)
+
+	// Subsequent calls return empty
+	heimdallClient.EXPECT().
+		FetchStateSyncEventsByTime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return([]*EventRecordWithTime{}, nil).
+		AnyTimes()
+
+	// Run scraper in background
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := b.Run(ctx); err != nil && !errors.Is(err, ctx.Err()) {
+			t.Logf("Run error: %v", err)
+		}
+	}()
+
+	prepareDeterministicService(t, ctx, b)
+	err := b.ProcessNewBlocks(ctx, getBlocks(t, 2))
+	require.NoError(t, err)
+
+	// Verify events were persisted — the store should have event data for IDs 1 and 2
+	lastProcessedEventId, err := b.store.LastProcessedEventId(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), lastProcessedEventId, "should have mapped events 1-2 to block 2")
+
+	cancel()
+	wg.Wait()
+}
+
+// TestService_DeterministicPath_ContiguousPrefixPersistsOnlyPrefix verifies that when
+// there's a gap in event IDs, only the contiguous prefix is mapped and persisted.
+func TestService_DeterministicPath_ContiguousPrefixPersistsOnlyPrefix(t *testing.T) {
+	ctx := context.Background()
+	heimdallClient, b := setup(t, BorConfigWithDeterministicSSFork)
+	prepareDeterministicService(t, ctx, b)
+
+	event1 := &EventRecordWithTime{EventRecord: EventRecord{ID: 1}}
+	event2 := &EventRecordWithTime{EventRecord: EventRecord{ID: 2}}
+	event5 := &EventRecordWithTime{EventRecord: EventRecord{ID: 5}} // gap: 3, 4 missing
+
+	heimdallClient.EXPECT().
+		FetchStateSyncEventsByTime(gomock.Any(), uint64(1), int64(99), 0).
+		Return([]*EventRecordWithTime{event1, event2, event5}, nil)
+
+	err := b.ProcessNewBlocks(ctx, getBlocks(t, 2))
+	require.NoError(t, err)
+
+	// Only events 1-2 should be mapped (contiguous prefix before gap at 5)
+	lastProcessedEventId, err := b.store.LastProcessedEventId(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), lastProcessedEventId, "should only map contiguous prefix")
+}

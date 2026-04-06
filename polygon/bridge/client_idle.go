@@ -33,14 +33,6 @@ func (c *IdleClient) FetchStateSyncEvents(ctx context.Context, fromId uint64, to
 	return nil, nil
 }
 
-func (c *IdleClient) FetchBlockHeightByTime(context.Context, int64) (int64, error) {
-	return 0, errors.New("bridge: deterministic state sync requires Heimdall; IdleClient does not support FetchBlockHeightByTime")
-}
-
-func (c *IdleClient) FetchStateSyncEventsAtHeight(context.Context, uint64, int64, int64, int) ([]*EventRecordWithTime, error) {
-	return nil, errors.New("bridge: deterministic state sync requires Heimdall; IdleClient does not support FetchStateSyncEventsAtHeight")
-}
-
 func (c *IdleClient) FetchStateSyncEventsByTime(context.Context, uint64, int64, int) ([]*EventRecordWithTime, error) {
 	return nil, errors.New("bridge: deterministic state sync requires Heimdall; IdleClient does not support FetchStateSyncEventsByTime")
 }

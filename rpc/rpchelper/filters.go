@@ -479,9 +479,11 @@ func (ff *Filters) SubscribeLogs(size int, criteria filters.FilterCriteria) (<-c
 					break
 				}
 			}
-			if len(allowedTopicsRow) > 0 {
-				allowedTopics = append(allowedTopics, allowedTopicsRow)
-			}
+			// BUG FIX: Removed guard that was dropping empty topic rows (wildcards)
+			// This was causing eth_subscribe with topic filters to return no events
+			// because wildcard positions (empty arrays) were being skipped, causing
+			// positional misalignment in topic matching
+			allowedTopics = append(allowedTopics, allowedTopicsRow)
 		}
 		f.topicsOriginal = allowedTopics
 	}

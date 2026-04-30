@@ -537,6 +537,43 @@ func TestWithdrawalsEncoding(t *testing.T) {
 	assert.Equal(t, block2.Hash(), decoded2.Hash())
 }
 
+// TestBlockWithStateSyncTxRoundtrip ensures that we can RLP-roundtrip a block with a state-sync tx.
+// `func (tx *StateSyncTx) EncodingSize() int` had an issue where it was double-counting bytes.
+func TestBlockWithStateSyncTxRoundtrip(t *testing.T) {
+	t.Parallel()
+
+	stateSyncTx := &StateSyncTx{
+		StateSyncData: []*StateSyncData{
+			{
+				ID:       1,
+				Contract: common.Address{0x42},
+				Data:     nil,
+				TxHash:   common.Hash{0x99},
+			},
+		},
+	}
+
+	header := &Header{
+		Difficulty: big.NewInt(1),
+		Number:     big.NewInt(1),
+		GasLimit:   1,
+		Time:       1,
+		Extra:      []byte{},
+	}
+
+	block := NewBlockFromStorage(common.Hash{}, header, []Transaction{stateSyncTx}, nil, nil)
+
+	encoded, err := rlp.EncodeToBytes(block)
+	require.NoError(t, err)
+
+	var decoded Block
+	require.NoError(t, rlp.DecodeBytes(encoded, &decoded),
+		"encoded block must round-trip; encoded %d bytes", len(encoded))
+
+	require.Len(t, decoded.Transactions(), 1)
+	require.Equal(t, byte(StateSyncTxType), decoded.Transactions()[0].Type())
+}
+
 func TestBlockRawBodyPreShanghai(t *testing.T) {
 	t.Parallel()
 	require := require.New(t)

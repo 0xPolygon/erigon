@@ -23,18 +23,23 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/erigontech/erigon-lib/common"
 	"github.com/erigontech/erigon-lib/common/hexutil"
 	"github.com/erigontech/erigon-lib/common/math"
+	"github.com/erigontech/erigon/core/state"
+	"github.com/erigontech/erigon/core/vm/evmtypes"
 	"github.com/erigontech/erigon/execution/chain"
 	"github.com/erigontech/erigon/execution/chain/params"
+	"github.com/erigontech/erigon/polygon/bor/borcfg"
 )
 
 // precompiledTest defines the input/output pairs for precompiled contract tests.
@@ -554,6 +559,7 @@ func TestPointEvaluationPrecompileRemoval(t *testing.T) {
 		{name: "MadhugiriPro", rules: chain.Rules{IsMadhugiriPro: true}, shouldHaveKzg: true},
 		{name: "Lisovo", rules: chain.Rules{IsLisovo: true}, shouldHaveKzg: true},
 		{name: "LisovoPro", rules: chain.Rules{IsLisovoPro: true}, shouldHaveKzg: false},
+		{name: "Chicago", rules: chain.Rules{IsChicago: true}, shouldHaveKzg: false},
 	}
 	for _, tc := range cases {
 		precompiles := Precompiles(&tc.rules)
@@ -567,5 +573,294 @@ func TestPointEvaluationPrecompileRemoval(t *testing.T) {
 		if exists && pc.Name() != kzgPointEvaluationPrecompile.Name() {
 			t.Errorf("invalid precompile loaded instead of kzgPointEvaluation (0x0a). expected name: %s, got name: %s, test case: %s", kzgPointEvaluationPrecompile.Name(), pc.Name(), tc.name)
 		}
+	}
+}
+
+// pip88StorageReader is a minimal state.StateReader that returns a configured
+// committed-storage value for one (address, slot) pair. It lets the SStore
+// test populate "original" (committed) state without going through a real
+// commit, mirroring the Finalise(false) trick used in the bor test.
+type pip88StorageReader struct {
+	state.NoopReader
+	addr common.Address
+	slot common.Hash
+	val  uint256.Int
+}
+
+func (r *pip88StorageReader) ReadAccountStorage(address common.Address, key common.Hash) (uint256.Int, bool, error) {
+	if address == r.addr && key == r.slot {
+		return r.val, true, nil
+	}
+	return uint256.Int{}, false, nil
+}
+
+// TestPIP88PrecompileGasCosts verifies pre- and post-PIP-88 gas for every
+// precompile repriced by the Chicago fork.
+func TestPIP88PrecompileGasCosts(t *testing.T) {
+	t.Parallel()
+
+	// blake2F input: 213 bytes, rounds=12 in big-endian uint32 at [0:4].
+	blake2FInput := make([]byte, 213)
+	blake2FInput[3] = 12
+
+	cases := []struct {
+		addr    byte
+		input   []byte
+		preGas  uint64
+		postGas uint64
+		name    string
+	}{
+		{0x06, nil, params.Bn254AddGasIstanbul, params.Bn254AddGasIstanbulPIP88, "bn254Add (3.6x)"},
+		{0x07, nil, params.Bn254ScalarMulGasIstanbul, params.Bn254ScalarMulGasIstanbulPIP88, "bn254ScalarMul (2.1x)"},
+		{0x0b, nil, params.Bls12381G1AddGas, params.Bls12381G1AddGasPIP88, "bls12381G1Add (2.8x)"},
+		{0x0d, nil, params.Bls12381G2AddGas, params.Bls12381G2AddGasPIP88, "bls12381G2Add (2.7x)"},
+		{0x10, nil, params.Bls12381MapFpToG1Gas, params.Bls12381MapFpToG1GasPIP88, "bls12381MapFpToG1 (2.8x)"},
+		{0x11, nil, params.Bls12381MapFp2ToG2Gas, params.Bls12381MapFp2ToG2GasPIP88, "bls12381MapFp2ToG2 (2.8x)"},
+		{
+			addr:    0x08,
+			input:   make([]byte, 192),
+			preGas:  params.Bn254PairingBaseGasIstanbul + params.Bn254PairingPerPointGasIstanbul,
+			postGas: params.Bn254PairingBaseGasIstanbulPIP88 + params.Bn254PairingPerPointGasIstanbulPIP88,
+			name:    "bn254Pairing k=1 (1.5x)",
+		},
+		{
+			addr:    0x0f,
+			input:   make([]byte, 384),
+			preGas:  params.Bls12381PairingBaseGas + params.Bls12381PairingPerPairGas,
+			postGas: params.Bls12381PairingBaseGasPIP88 + params.Bls12381PairingPerPairGasPIP88,
+			name:    "bls12381Pairing k=1 (2.9x)",
+		},
+		// MSM at k=1: discount table[0]=1000, so gas = mulGas.
+		{0x0c, make([]byte, 160), params.Bls12381G1MulGas, params.Bls12381G1MulGasPIP88, "bls12381G1MultiExp k=1 (6.1x)"},
+		{0x0e, make([]byte, 288), params.Bls12381G2MulGas, params.Bls12381G2MulGasPIP88, "bls12381G2MultiExp k=1 (6.4x)"},
+		{0x09, blake2FInput, 12, 12 * params.GFROUNDPIP88, "blake2F rounds=12 (22x)"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			addr := common.BytesToAddress([]byte{tc.addr})
+
+			pre, ok := PrecompiledContractsLisovoPro[addr]
+			if !ok {
+				t.Fatalf("0x%02x missing from PrecompiledContractsLisovoPro", tc.addr)
+			}
+			post, ok := PrecompiledContractsChicago[addr]
+			if !ok {
+				t.Fatalf("0x%02x missing from PrecompiledContractsChicago", tc.addr)
+			}
+
+			if got := pre.RequiredGas(tc.input); got != tc.preGas {
+				t.Errorf("pre-PIP-88 gas: got %d, want %d", got, tc.preGas)
+			}
+			if got := post.RequiredGas(tc.input); got != tc.postGas {
+				t.Errorf("post-PIP-88 gas: got %d, want %d", got, tc.postGas)
+			}
+		})
+	}
+}
+
+// TestPIP88SStoreGas walks every branch of makeGasSStoreFuncPIP88 and verifies
+// the gas charged and refund-pool delta match closed-form values.
+func TestPIP88SStoreGas(t *testing.T) {
+	t.Parallel()
+
+	addr := common.Address{0xaa}
+	slot := common.BigToHash(big.NewInt(1))
+	val42 := *uint256.NewInt(0x42)
+	val99 := *uint256.NewInt(0x99)
+	zero := uint256.Int{}
+
+	cases := []struct {
+		name            string
+		original        uint256.Int // committed value before this tx
+		current         uint256.Int // dirty value (only applied if != original)
+		value           uint256.Int // value being written by SSTORE
+		warm            bool
+		wantGas         uint64
+		wantRefundDelta int64
+	}{
+		{
+			name:     "cold reset existing slot (EIP-2929 invariant: total = 5000)",
+			original: val42, current: val42, value: val99, warm: false,
+			wantGas: params.SstoreResetGasEIP2200, wantRefundDelta: 0,
+		},
+		{
+			name:     "warm reset existing slot",
+			original: val42, current: val42, value: val99, warm: true,
+			wantGas: params.SstoreResetGasEIP2200 - params.ColdSstoreCostPIP88, wantRefundDelta: 0,
+		},
+		{
+			name:     "cold create slot",
+			original: zero, current: zero, value: val99, warm: false,
+			wantGas: params.ColdSstoreCostPIP88 + params.SstoreSetGasEIP2200, wantRefundDelta: 0,
+		},
+		{
+			name:     "cold delete clean slot (clearingRefund = SstoreClearsScheduleRefundPIP88)",
+			original: val42, current: val42, value: zero, warm: false,
+			wantGas:         params.SstoreResetGasEIP2200,
+			wantRefundDelta: int64(params.SstoreClearsScheduleRefundPIP88),
+		},
+		{
+			name:     "cold noop (current == value)",
+			original: val42, current: val42, value: val42, warm: false,
+			wantGas: params.ColdSstoreCostPIP88 + params.WarmStorageReadCostEIP2929, wantRefundDelta: 0,
+		},
+		{
+			name:     "reset to original existing slot (refund = (RESET - cold) - warm)",
+			original: val42, current: val99, value: val42, warm: true,
+			wantGas:         params.WarmStorageReadCostEIP2929,
+			wantRefundDelta: int64((params.SstoreResetGasEIP2200 - params.ColdSstoreCostPIP88) - params.WarmStorageReadCostEIP2929),
+		},
+		{
+			name:     "reset to clean zero (refund = SstoreSet - warm, unchanged from EIP-3529)",
+			original: zero, current: val99, value: zero, warm: true,
+			wantGas:         params.WarmStorageReadCostEIP2929,
+			wantRefundDelta: int64(params.SstoreSetGasEIP2200 - params.WarmStorageReadCostEIP2929),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// pip88StorageReader supplies tc.original as the committed value for slot.
+			reader := &pip88StorageReader{addr: addr, slot: slot, val: tc.original}
+			statedb := state.New(reader)
+			require.NoError(t, statedb.CreateAccount(addr, false))
+
+			// Apply dirty current value when it differs from committed original.
+			if !tc.current.Eq(&tc.original) {
+				require.NoError(t, statedb.SetState(addr, slot, tc.current))
+			}
+			if tc.warm {
+				statedb.AddSlotToAccessList(addr, slot)
+			}
+
+			evm := NewEVM(
+				evmtypes.BlockContext{BlockNumber: 1, Time: 1, PrevRanDao: &common.Hash{}},
+				evmtypes.TxContext{},
+				statedb, chain.TestChainBorConfig, Config{},
+			)
+			contract := NewContract(AccountRef(common.Address{}), addr, uint256.NewInt(0), 1_000_000, false, NewJumpDestCache(16))
+
+			stack := New()
+			stack.push(new(uint256.Int).Set(&tc.value))         // Back(1) = value
+			stack.push(new(uint256.Int).SetBytes(slot.Bytes())) // peek = slot
+
+			refundBefore := statedb.GetRefund()
+			gas, err := gasSStorePIP88(evm, contract, stack, NewMemory(), 0)
+			if err != nil {
+				t.Fatalf("gasSStorePIP88 returned error: %v", err)
+			}
+			refundDelta := int64(statedb.GetRefund()) - int64(refundBefore)
+
+			if gas != tc.wantGas {
+				t.Errorf("gas: got %d, want %d", gas, tc.wantGas)
+			}
+			if refundDelta != tc.wantRefundDelta {
+				t.Errorf("refund delta: got %d, want %d", refundDelta, tc.wantRefundDelta)
+			}
+		})
+	}
+}
+
+// TestPIP88ForkBoundary verifies that the Chicago fork dispatch flips at the
+// configured block: precompile set and SLOAD instruction-set gas function both
+// switch from EIP-3529/LisovoPro to PIP-88 at block N (with N-1 still old).
+func TestPIP88ForkBoundary(t *testing.T) {
+	t.Parallel()
+
+	const chicagoBlock = 100
+
+	// Construct a minimal bor chain config with Chicago pushed to a specific
+	// block so we have a real boundary to test against. All earlier height
+	// forks default to active at block 0 (matching TestChainBorConfig).
+	cfg := &chain.Config{
+		ChainID:               big.NewInt(1337),
+		Consensus:             chain.BorConsensus,
+		HomesteadBlock:        big.NewInt(0),
+		TangerineWhistleBlock: big.NewInt(0),
+		SpuriousDragonBlock:   big.NewInt(0),
+		ByzantiumBlock:        big.NewInt(0),
+		ConstantinopleBlock:   big.NewInt(0),
+		PetersburgBlock:       big.NewInt(0),
+		IstanbulBlock:         big.NewInt(0),
+		MuirGlacierBlock:      big.NewInt(0),
+		BerlinBlock:           big.NewInt(0),
+		LondonBlock:           big.NewInt(0),
+		Bor: &borcfg.BorConfig{
+			AgraBlock:         big.NewInt(0),
+			NapoliBlock:       big.NewInt(0),
+			AhmedabadBlock:    big.NewInt(0),
+			BhilaiBlock:       big.NewInt(0),
+			RioBlock:          big.NewInt(0),
+			MadhugiriBlock:    big.NewInt(0),
+			MadhugiriProBlock: big.NewInt(0),
+			LisovoBlock:       big.NewInt(0),
+			LisovoProBlock:    big.NewInt(0),
+			GiuglianoBlock:    big.NewInt(0),
+			ChicagoBlock:      big.NewInt(chicagoBlock),
+		},
+	}
+
+	addr := common.Address{0xaa}
+	slot := common.BigToHash(big.NewInt(1))
+
+	cases := []struct {
+		name             string
+		block            uint64
+		wantIsChicago    bool
+		wantBn254AddGas  uint64 // probe for ActivePrecompiledContracts dispatch
+		wantColdSloadGas uint64 // probe for instruction-set dispatch
+	}{
+		{
+			name:             "block N-1 (pre-Chicago)",
+			block:            chicagoBlock - 1,
+			wantIsChicago:    false,
+			wantBn254AddGas:  params.Bn254AddGasIstanbul,
+			wantColdSloadGas: params.ColdSloadCostEIP2929,
+		},
+		{
+			name:             "block N (Chicago active)",
+			block:            chicagoBlock,
+			wantIsChicago:    true,
+			wantBn254AddGas:  params.Bn254AddGasIstanbulPIP88,
+			wantColdSloadGas: params.ColdSloadCostPIP88,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bc := evmtypes.BlockContext{BlockNumber: tc.block, Time: 1}
+			rules := bc.Rules(cfg)
+			if rules.IsChicago != tc.wantIsChicago {
+				t.Fatalf("rules.IsChicago: got %v, want %v", rules.IsChicago, tc.wantIsChicago)
+			}
+
+			// Precompile dispatch probe.
+			bn254Add := Precompiles(rules)[common.BytesToAddress([]byte{0x06})]
+			if got := bn254Add.RequiredGas(nil); got != tc.wantBn254AddGas {
+				t.Errorf("bn254Add gas via Precompiles: got %d, want %d", got, tc.wantBn254AddGas)
+			}
+
+			// Instruction-set dispatch probe via SLOAD's dynamicGas on a cold slot.
+			statedb := state.New(state.NewNoopReader())
+			require.NoError(t, statedb.CreateAccount(addr, false))
+			evm := NewEVM(
+				evmtypes.BlockContext{BlockNumber: tc.block, Time: 1, PrevRanDao: &common.Hash{}},
+				evmtypes.TxContext{},
+				statedb, cfg, Config{},
+			)
+			contract := NewContract(AccountRef(common.Address{}), addr, uint256.NewInt(0), 1_000_000, false, NewJumpDestCache(16))
+			stack := New()
+			stack.push(new(uint256.Int).SetBytes(slot.Bytes()))
+
+			jt := evm.Interpreter().(*EVMInterpreter).jt
+			gas, err := jt[SLOAD].dynamicGas(evm, contract, stack, NewMemory(), 0)
+			if err != nil {
+				t.Fatalf("SLOAD dynamicGas: %v", err)
+			}
+			if gas != tc.wantColdSloadGas {
+				t.Errorf("cold SLOAD gas: got %d, want %d", gas, tc.wantColdSloadGas)
+			}
+		})
 	}
 }

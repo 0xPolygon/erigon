@@ -63,21 +63,25 @@ func (ec *EventChannel[TEvent]) Events() <-chan TEvent {
 }
 
 // PushEvent queues an event. If the queue is full, it drops the oldest event to make space.
-func (ec *EventChannel[TEvent]) PushEvent(e TEvent) {
+// It returns a pointer to the dropped event, or nil if nothing was dropped.
+func (ec *EventChannel[TEvent]) PushEvent(e TEvent) *TEvent {
 	ec.queueMutex.Lock()
 	defer ec.queueMutex.Unlock()
 
-	var dropped bool
+	var droppedEvent *TEvent
 	if uint(ec.queue.Len()) == ec.queueCap {
-		ec.queue.Remove(ec.queue.Front())
-		dropped = true
+		front := ec.queue.Front()
+		dropped := front.Value.(TEvent)
+		droppedEvent = &dropped
+		ec.queue.Remove(front)
 	}
-	if ec.opts.logger != nil && dropped {
+	if ec.opts.logger != nil && droppedEvent != nil {
 		ec.opts.logger.Log(ec.opts.loggerLvl, fmt.Sprintf("[event-channel-%s] dropping event", ec.opts.loggerId))
 	}
 
 	ec.queue.PushBack(e)
 	ec.queueCond.Signal()
+	return droppedEvent
 }
 
 // takeEvent dequeues an event. If the queue was empty, it returns false.

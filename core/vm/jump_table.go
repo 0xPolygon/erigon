@@ -72,6 +72,7 @@ var (
 	osakaInstructionSet            = newOsakaInstructionSet()
 	lisovoInstructionSet           = newLisovoInstructionSet()
 	lisovoProInstructionSet        = newLisovoProInstructionSet()
+	chicagoInstructionSet          = newChicagoInstructionSet()
 )
 
 // JumpTable contains the EVM opcodes supported at a given fork.
@@ -303,6 +304,13 @@ func newLisovoInstructionSet() JumpTable {
 func newLisovoProInstructionSet() JumpTable {
 	instructionSet := newBhilaiInstructionSet()
 	enable7939(&instructionSet) // EIP-7939 (CLZ opcode)
+	validateAndFillMaxStack(&instructionSet)
+	return instructionSet
+}
+
+func newChicagoInstructionSet() JumpTable {
+	instructionSet := newLisovoProInstructionSet()
+	enablePIP88(&instructionSet) // PIP-88: cold-storage repricing
 	validateAndFillMaxStack(&instructionSet)
 	return instructionSet
 }

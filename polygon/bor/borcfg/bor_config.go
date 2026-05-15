@@ -52,6 +52,7 @@ type BorConfig struct {
 	LisovoBlock       *big.Int `json:"lisovoBlock"`       // Lisovo switch block (nil = no fork, 0 = already on Lisovo)
 	LisovoProBlock    *big.Int `json:"lisovoProBlock"`    // LisovoPro switch block (nil = no fork, 0 = already on LisovoPro)
 	GiuglianoBlock    *big.Int `json:"giuglianoBlock"`    // Giugliano switch block (nil = no fork, 0 = already on Giugliano)
+	ChicagoBlock      *big.Int `json:"chicagoBlock"`      // Chicago switch block (nil = no fork, 0 = already on Chicago)
 	// TODO marcello define HF block's height
 	DeterministicStateSyncBlock *big.Int `json:"deterministicStateSyncBlock"` // DeterministicStateSync switch block (nil = no fork, 0 = already on DeterministicStateSync)
 
@@ -248,6 +249,14 @@ func (c *BorConfig) IsGiugliano(number uint64) bool {
 
 func (c *BorConfig) GetGiuglianoBlock() *big.Int {
 	return c.GiuglianoBlock
+}
+
+func (c *BorConfig) IsChicago(number uint64) bool {
+	return isForked(c.ChicagoBlock, number)
+}
+
+func (c *BorConfig) GetChicagoBlock() *big.Int {
+	return c.ChicagoBlock
 }
 
 func (c *BorConfig) IsDeterministicStateSync(number uint64) bool {

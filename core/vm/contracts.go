@@ -60,6 +60,8 @@ type PrecompiledContract interface {
 
 func Precompiles(chainRules *chain.Rules) map[common.Address]PrecompiledContract {
 	switch {
+	case chainRules.IsChicago:
+		return PrecompiledContractsChicago
 	case chainRules.IsLisovoPro:
 		return PrecompiledContractsLisovoPro
 	case chainRules.IsLisovo:
@@ -312,7 +314,30 @@ var PrecompiledContractsLisovoPro = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{0x01, 0x00}): &p256Verify{eip7951: true},
 }
 
+// PrecompiledContractsChicago contains the set of pre-compiled Ethereum
+// contracts used in the Chicago release (bor HF).
+var PrecompiledContractsChicago = map[common.Address]PrecompiledContract{
+	common.BytesToAddress([]byte{0x01}):       &ecrecover{},
+	common.BytesToAddress([]byte{0x02}):       &sha256hash{},
+	common.BytesToAddress([]byte{0x03}):       &ripemd160hash{},
+	common.BytesToAddress([]byte{0x04}):       &dataCopy{},
+	common.BytesToAddress([]byte{0x05}):       &bigModExp{madhugiri: true},
+	common.BytesToAddress([]byte{0x06}):       &bn254AddIstanbul{pip88: true},
+	common.BytesToAddress([]byte{0x07}):       &bn254ScalarMulIstanbul{pip88: true},
+	common.BytesToAddress([]byte{0x08}):       &bn254PairingIstanbul{pip88: true},
+	common.BytesToAddress([]byte{0x09}):       &blake2F{pip88: true},
+	common.BytesToAddress([]byte{0x0b}):       &bls12381G1Add{pip88: true},
+	common.BytesToAddress([]byte{0x0c}):       &bls12381G1MultiExp{pip88: true},
+	common.BytesToAddress([]byte{0x0d}):       &bls12381G2Add{pip88: true},
+	common.BytesToAddress([]byte{0x0e}):       &bls12381G2MultiExp{pip88: true},
+	common.BytesToAddress([]byte{0x0f}):       &bls12381Pairing{pip88: true},
+	common.BytesToAddress([]byte{0x10}):       &bls12381MapFpToG1{pip88: true},
+	common.BytesToAddress([]byte{0x11}):       &bls12381MapFp2ToG2{pip88: true},
+	common.BytesToAddress([]byte{0x01, 0x00}): &p256Verify{eip7951: true},
+}
+
 var (
+	PrecompiledAddressesChicago      []common.Address
 	PrecompiledAddressesLisovoPro    []common.Address
 	PrecompiledAddressesLisovo       []common.Address
 	PrecompiledAddressesMadhugiriPro []common.Address
@@ -368,11 +393,16 @@ func init() {
 	for k := range PrecompiledContractsLisovoPro {
 		PrecompiledAddressesLisovoPro = append(PrecompiledAddressesLisovoPro, k)
 	}
+	for k := range PrecompiledContractsChicago {
+		PrecompiledAddressesChicago = append(PrecompiledAddressesChicago, k)
+	}
 }
 
 // ActivePrecompiles returns the precompiles enabled with the current configuration.
 func ActivePrecompiles(rules *chain.Rules) []common.Address {
 	switch {
+	case rules.IsChicago:
+		return PrecompiledAddressesChicago
 	case rules.IsLisovoPro:
 		return PrecompiledAddressesLisovoPro
 	case rules.IsLisovo:
@@ -760,10 +790,15 @@ func runBn254Add(input []byte) ([]byte, error) {
 
 // bn254Add implements a native elliptic curve point addition conforming to
 // Istanbul consensus rules.
-type bn254AddIstanbul struct{}
+type bn254AddIstanbul struct {
+	pip88 bool
+}
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *bn254AddIstanbul) RequiredGas(input []byte) uint64 {
+	if c.pip88 {
+		return params.Bn254AddGasIstanbulPIP88
+	}
 	return params.Bn254AddGasIstanbul
 }
 
@@ -805,10 +840,15 @@ func runBn254ScalarMul(input []byte) ([]byte, error) {
 
 // bn254ScalarMulIstanbul implements a native elliptic curve scalar
 // multiplication conforming to Istanbul consensus rules.
-type bn254ScalarMulIstanbul struct{}
+type bn254ScalarMulIstanbul struct {
+	pip88 bool
+}
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *bn254ScalarMulIstanbul) RequiredGas(input []byte) uint64 {
+	if c.pip88 {
+		return params.Bn254ScalarMulGasIstanbulPIP88
+	}
 	return params.Bn254ScalarMulGasIstanbul
 }
 
@@ -890,10 +930,15 @@ func runBn254Pairing(input []byte) ([]byte, error) {
 
 // bn254PairingIstanbul implements a pairing pre-compile for the bn254 curve
 // conforming to Istanbul consensus rules.
-type bn254PairingIstanbul struct{}
+type bn254PairingIstanbul struct {
+	pip88 bool
+}
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *bn254PairingIstanbul) RequiredGas(input []byte) uint64 {
+	if c.pip88 {
+		return params.Bn254PairingBaseGasIstanbulPIP88 + uint64(len(input)/192)*params.Bn254PairingPerPointGasIstanbulPIP88
+	}
 	return params.Bn254PairingBaseGasIstanbul + uint64(len(input)/192)*params.Bn254PairingPerPointGasIstanbul
 }
 
@@ -922,7 +967,9 @@ func (c *bn254PairingByzantium) Name() string {
 	return "BN254_PAIRING" // note bn254 is the correct name and is required by eth_config
 }
 
-type blake2F struct{}
+type blake2F struct {
+	pip88 bool
+}
 
 func (c *blake2F) RequiredGas(input []byte) uint64 {
 	// If the input is malformed, we can't calculate the gas, return 0 and let the
@@ -930,7 +977,14 @@ func (c *blake2F) RequiredGas(input []byte) uint64 {
 	if len(input) != blake2FInputLength {
 		return 0
 	}
-	return uint64(binary.BigEndian.Uint32(input[0:4]))
+	// Per EIP-152, each blake2F operation costs GFROUND * rounds gas, where GFROUND = 1.
+	// PIP-88 raises GFROUND to 22 (params.GFROUNDPIP88).
+	// rounds is bounded by uint32 so multiplying by params.GFROUNDPIP88 cannot overflow uint64.
+	rounds := uint64(binary.BigEndian.Uint32(input[0:4]))
+	if c.pip88 {
+		return rounds * params.GFROUNDPIP88
+	}
+	return rounds
 }
 
 const (
@@ -995,10 +1049,15 @@ var (
 )
 
 // bls12381G1Add implements EIP-2537 G1Add precompile.
-type bls12381G1Add struct{}
+type bls12381G1Add struct {
+	pip88 bool
+}
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *bls12381G1Add) RequiredGas(input []byte) uint64 {
+	if c.pip88 {
+		return params.Bls12381G1AddGasPIP88
+	}
 	return params.Bls12381G1AddGas
 }
 
@@ -1033,7 +1092,9 @@ func (c *bls12381G1Add) Name() string {
 }
 
 // bls12381G1MultiExp implements EIP-2537 G1MultiExp precompile.
-type bls12381G1MultiExp struct{}
+type bls12381G1MultiExp struct {
+	pip88 bool
+}
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *bls12381G1MultiExp) RequiredGas(input []byte) uint64 {
@@ -1050,8 +1111,12 @@ func (c *bls12381G1MultiExp) RequiredGas(input []byte) uint64 {
 	} else {
 		discount = params.Bls12381MSMDiscountTableG1[dLen-1]
 	}
+	mulGas := params.Bls12381G1MulGas
+	if c.pip88 {
+		mulGas = params.Bls12381G1MulGasPIP88
+	}
 	// Calculate gas and return the result
-	return (uint64(k) * params.Bls12381G1MulGas * discount) / 1000
+	return (uint64(k) * mulGas * discount) / 1000
 }
 
 func (c *bls12381G1MultiExp) Run(input []byte) ([]byte, error) {
@@ -1096,10 +1161,15 @@ func (c *bls12381G1MultiExp) Name() string {
 }
 
 // bls12381G2Add implements EIP-2537 G2Add precompile.
-type bls12381G2Add struct{}
+type bls12381G2Add struct {
+	pip88 bool
+}
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *bls12381G2Add) RequiredGas(input []byte) uint64 {
+	if c.pip88 {
+		return params.Bls12381G2AddGasPIP88
+	}
 	return params.Bls12381G2AddGas
 }
 
@@ -1135,7 +1205,9 @@ func (c *bls12381G2Add) Name() string {
 }
 
 // bls12381G2MultiExp implements EIP-2537 G2MultiExp precompile.
-type bls12381G2MultiExp struct{}
+type bls12381G2MultiExp struct {
+	pip88 bool
+}
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *bls12381G2MultiExp) RequiredGas(input []byte) uint64 {
@@ -1152,8 +1224,12 @@ func (c *bls12381G2MultiExp) RequiredGas(input []byte) uint64 {
 	} else {
 		discount = params.Bls12381MSMDiscountTableG2[dLen-1]
 	}
+	mulGas := params.Bls12381G2MulGas
+	if c.pip88 {
+		mulGas = params.Bls12381G2MulGasPIP88
+	}
 	// Calculate gas and return the result
-	return (uint64(k) * params.Bls12381G2MulGas * discount) / 1000
+	return (uint64(k) * mulGas * discount) / 1000
 }
 
 func (c *bls12381G2MultiExp) Run(input []byte) ([]byte, error) {
@@ -1198,10 +1274,15 @@ func (c *bls12381G2MultiExp) Name() string {
 }
 
 // bls12381Pairing implements EIP-2537 Pairing precompile.
-type bls12381Pairing struct{}
+type bls12381Pairing struct {
+	pip88 bool
+}
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *bls12381Pairing) RequiredGas(input []byte) uint64 {
+	if c.pip88 {
+		return params.Bls12381PairingBaseGasPIP88 + uint64(len(input)/384)*params.Bls12381PairingPerPairGasPIP88
+	}
 	return params.Bls12381PairingBaseGas + uint64(len(input)/384)*params.Bls12381PairingPerPairGas
 }
 
@@ -1354,10 +1435,15 @@ func encodePointG2(p *bls12381.G2Affine) []byte {
 }
 
 // bls12381MapFpToG1 implements EIP-2537 MapG1 precompile.
-type bls12381MapFpToG1 struct{}
+type bls12381MapFpToG1 struct {
+	pip88 bool
+}
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *bls12381MapFpToG1) RequiredGas(input []byte) uint64 {
+	if c.pip88 {
+		return params.Bls12381MapFpToG1GasPIP88
+	}
 	return params.Bls12381MapFpToG1Gas
 }
 
@@ -1387,10 +1473,15 @@ func (c *bls12381MapFpToG1) Name() string {
 }
 
 // bls12381MapFp2ToG2 implements EIP-2537 MapG2 precompile.
-type bls12381MapFp2ToG2 struct{}
+type bls12381MapFp2ToG2 struct {
+	pip88 bool
+}
 
 // RequiredGas returns the gas required to execute the pre-compiled contract.
 func (c *bls12381MapFp2ToG2) RequiredGas(input []byte) uint64 {
+	if c.pip88 {
+		return params.Bls12381MapFp2ToG2GasPIP88
+	}
 	return params.Bls12381MapFp2ToG2Gas
 }
 

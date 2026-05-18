@@ -35,9 +35,16 @@ import (
 	"github.com/erigontech/erigon/polygon/bor/borcfg"
 )
 
+// stateSyncScraperLag is how far behind wall-clock the scraper queries
+// Heimdall, in seconds. Heimdall's post-HF deterministic state-sync endpoint
+// only returns results when latestIndexedTime > cutoff (the stability gate);
+// since latestIndexedTime is always behind wall-clock by at least one Heimdall
+// block, polling at time.Now() always fires the gate. A 30s lag leaves
+// comfortable headroom over Heimdall's ~2-3s block time + indexing latency.
+const stateSyncScraperLag = 30 * time.Second
+
 type eventFetcher interface {
 	FetchStateSyncEvents(ctx context.Context, fromId uint64, to time.Time, limit int) ([]*EventRecordWithTime, error)
-	FetchStateSyncEventsByTime(ctx context.Context, fromID uint64, toTime int64, limit int) ([]*EventRecordWithTime, error)
 }
 
 type ServiceConfig struct {
@@ -70,7 +77,6 @@ type Service struct {
 	reachedTip             atomic.Bool
 	fetchedEventsSignal    chan struct{}
 	lastFetchedEventTime   atomic.Uint64
-	lastFetchedEventId     atomic.Uint64
 	lastProcessedBlockInfo atomic.Pointer[ProcessedBlockInfo]
 	unwindMu               sync.Mutex
 	ready                  ready
@@ -145,7 +151,6 @@ func (s *Service) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.lastFetchedEventId.Store(lastFetchedEventId)
 
 	lastProcessedEventId, err := s.store.LastProcessedEventId(ctx)
 	if err != nil {
@@ -183,7 +188,13 @@ func (s *Service) Run(ctx context.Context) error {
 
 		// start scraping events
 		from := lastFetchedEventId + 1
-		to := time.Now()
+		// Lag the cutoff behind wall-clock so Heimdall's post-HF stability gate
+		// (which holds responses until a committed block past the cutoff has
+		// been indexed) can clear. Heimdall block time is ~2-3s on mainnet, so
+		// a 30s lag leaves comfortable headroom. Without this the gate would
+		// fire on every scraper poll and the scraper would stop making
+		// progress. Pre-HF Heimdall ignores the gate, so the lag is harmless.
+		to := time.Now().Add(-stateSyncScraperLag)
 		events, err := s.eventFetcher.FetchStateSyncEvents(ctx, from, to, StateEventsFetchLimit)
 		if err != nil {
 			if liberrors.IsOneOf(err, s.transientErrors) {
@@ -253,7 +264,6 @@ func (s *Service) Run(ctx context.Context) error {
 		}
 
 		s.lastFetchedEventTime.Store(uint64(lastFetchedEventTime))
-		s.lastFetchedEventId.Store(lastFetchedEventId)
 		s.signalFetchedEvents()
 
 		select {
@@ -336,7 +346,6 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 
 	blockNumToEventId := make(map[uint64]uint64)
 	eventTxnToBlockNum := make(map[common.Hash]uint64)
-	var deterministicEvents []*EventRecordWithTime // events fetched via deterministic path to persist
 	processedBlocks := make([]ProcessedBlockInfo, 0, 1+len(blocks)/int(s.borConfig.CalculateSprintLength(from)))
 	for _, block := range blocks {
 		// check if block is start of span and > 0
@@ -407,80 +416,13 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 		var endId uint64
 
 		if eventLimit == nil || *eventLimit > 0 {
-			if s.borConfig.IsDeterministicStateSync(blockNum) {
-				s.logger.Debug(
-					bridgeLogPrefix("deterministic state sync query"),
-					"blockNum", blockNum,
-					"startId", startId,
-					"toTime", toTime,
-					"lastProcessedEventId", lastProcessedEventId,
-				)
-				events, err := s.eventFetcher.FetchStateSyncEventsByTime(ctx, startId, int64(toTime), 0)
-				if err != nil {
-					s.logger.Error(
-						bridgeLogPrefix("deterministic state sync: failed to fetch events, skipping"),
-						"blockNum", blockNum,
-						"err", err,
-					)
-					break
-				}
+			if err = s.waitForScraper(ctx, toTime); err != nil {
+				return err
+			}
 
-				// Filter events by record_time < to_time, matching bor's validateEventRecord behavior.
-				toTimestamp := time.Unix(int64(toTime), 0)
-				filtered := events[:0]
-				for _, e := range events {
-					if !e.Time.Before(toTimestamp) {
-						break
-					}
-					filtered = append(filtered, e)
-				}
-				events = filtered
-
-				if len(events) > 0 {
-					// Match bor's validateEventRecord exactly:
-					// - First event must be startId (lastStateID+1)
-					// - Process contiguous events from startId
-					// - Stop at the first gap
-					if events[0].ID != startId {
-						s.logger.Warn(
-							bridgeLogPrefix("deterministic state sync: event ID gap at start, skipping block (matches bor)"),
-							"expected", startId,
-							"got", events[0].ID,
-							"blockNum", blockNum,
-						)
-					} else {
-						// Find the contiguous prefix — stop at the first gap.
-						lastContiguousIdx := 0
-						for i := 1; i < len(events); i++ {
-							if events[i].ID != events[i-1].ID+1 {
-								s.logger.Warn(
-									bridgeLogPrefix("deterministic state sync: gap in batch, using contiguous prefix"),
-									"prevId", events[i-1].ID,
-									"nextId", events[i].ID,
-									"contiguousCount", i,
-									"blockNum", blockNum,
-								)
-								break
-							}
-							lastContiguousIdx = i
-						}
-
-						endId = events[lastContiguousIdx].ID
-						// Persist the deterministic event payloads so EventsByBlock
-						// reads the same data that the mapping references. The scraper
-						// may have different or missing data for these IDs.
-						deterministicEvents = append(deterministicEvents, events[:lastContiguousIdx+1]...)
-					}
-				}
-			} else {
-				if err = s.waitForScraper(ctx, toTime); err != nil {
-					return err
-				}
-
-				endId, err = s.store.LastEventIdWithinWindow(ctx, startId, time.Unix(int64(toTime), 0))
-				if err != nil {
-					return err
-				}
+			endId, err = s.store.LastEventIdWithinWindow(ctx, startId, time.Unix(int64(toTime), 0))
+			if err != nil {
+				return err
 			}
 		}
 
@@ -519,16 +461,6 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 
 	if len(processedBlocks) == 0 {
 		return nil
-	}
-
-	// Persist deterministic event payloads before the mapping, so EventsByBlock
-	// reads consistent data. This is needed because the scraper (which normally
-	// populates kv.BorEvents) uses the old endpoint and may have different
-	// or missing data for events fetched via the deterministic path.
-	if len(deterministicEvents) > 0 {
-		if err := s.store.PutEvents(ctx, deterministicEvents); err != nil {
-			return err
-		}
 	}
 
 	if err := s.store.PutBlockNumToEventId(ctx, blockNumToEventId); err != nil {
@@ -622,45 +554,6 @@ func (s *Service) waitForScraper(ctx context.Context, toTime uint64) error {
 
 		reachedTip = s.reachedTip.Load()
 		lastFetchedEventTime = s.lastFetchedEventTime.Load()
-
-		select {
-		case <-logTicker.C:
-			shouldLog = true
-		default:
-			shouldLog = false
-		}
-	}
-
-	return nil
-}
-
-func (s *Service) waitForScraperByEventId(ctx context.Context, targetEventId uint64) error {
-	logTicker := time.NewTicker(5 * time.Second)
-	defer logTicker.Stop()
-
-	shouldLog := true
-	reachedTip := s.reachedTip.Load()
-	lastFetchedEventId := s.lastFetchedEventId.Load()
-	for lastFetchedEventId < targetEventId {
-		if reachedTip {
-			return fmt.Errorf("event scraper reached tip at event %d but target event %d not yet available", lastFetchedEventId, targetEventId)
-		}
-
-		if shouldLog {
-			s.logger.Debug(
-				bridgeLogPrefix("waiting for event scraping to catch up (by event ID)"),
-				"reachedTip", reachedTip,
-				"lastFetchedEventId", lastFetchedEventId,
-				"targetEventId", targetEventId,
-			)
-		}
-
-		if err := s.waitFetchedEventsSignal(ctx); err != nil {
-			return err
-		}
-
-		reachedTip = s.reachedTip.Load()
-		lastFetchedEventId = s.lastFetchedEventId.Load()
 
 		select {
 		case <-logTicker.C:

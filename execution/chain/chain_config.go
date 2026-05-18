@@ -171,7 +171,6 @@ var (
 			LisovoProBlock:    big.NewInt(0),
 			GiuglianoBlock:    big.NewInt(0),
 			ChicagoBlock:      big.NewInt(0),
-			// TODO marcello define DeterministicStateSync block
 		},
 	}
 
@@ -228,8 +227,6 @@ type BorConfig interface {
 	GetGiuglianoBlock() *big.Int
 	IsChicago(num uint64) bool
 	GetChicagoBlock() *big.Int
-	IsDeterministicStateSync(num uint64) bool
-	GetDeterministicStateSyncBlock() *big.Int
 	StateReceiverContractAddress() common.Address
 	CalculateSprintNumber(number uint64) uint64
 	CalculateSprintLength(number uint64) uint64
@@ -248,7 +245,7 @@ func (c *Config) String() string {
 	engine := c.getEngine()
 
 	if c.Bor != nil {
-		return fmt.Sprintf("{ChainID: %v, Agra: %v, Napoli: %v, Ahmedabad: %v, Bhilai: %v, Rio: %v, Madhugiri: %v, MadhugiriPro: %v, Lisovo: %v, LisovoPro: %v, Giugliano: %v, Chicago: %v, DeterministicStateSync: %v, Engine: %v}",
+		return fmt.Sprintf("{ChainID: %v, Agra: %v, Napoli: %v, Ahmedabad: %v, Bhilai: %v, Rio: %v, Madhugiri: %v, MadhugiriPro: %v, Lisovo: %v, LisovoPro: %v, Giugliano: %v, Chicago: %v, Engine: %v}",
 			c.ChainID,
 			c.Bor.GetAgraBlock(),
 			c.Bor.GetNapoliBlock(),
@@ -261,7 +258,6 @@ func (c *Config) String() string {
 			c.Bor.GetLisovoProBlock(),
 			c.Bor.GetGiuglianoBlock(),
 			c.Bor.GetChicagoBlock(),
-			c.Bor.GetDeterministicStateSyncBlock(),
 			engine,
 		)
 	}

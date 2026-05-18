@@ -24,6 +24,5 @@ import (
 //go:generate mockgen -typed=true -destination=./client_mock.go -package=bridge . Client
 type Client interface {
 	FetchStateSyncEvents(ctx context.Context, fromId uint64, to time.Time, limit int) ([]*EventRecordWithTime, error)
-	FetchStateSyncEventsByTime(ctx context.Context, fromID uint64, toTime int64, limit int) ([]*EventRecordWithTime, error)
 	Close()
 }

@@ -293,9 +293,6 @@ func GatherForks(config *chain.Config, genesisTime uint64) (heightForks []uint64
 		if config.Bor.GetChicagoBlock() != nil {
 			heightForks = append(heightForks, config.Bor.GetChicagoBlock().Uint64())
 		}
-		if config.Bor.GetDeterministicStateSyncBlock() != nil {
-			heightForks = append(heightForks, config.Bor.GetDeterministicStateSyncBlock().Uint64())
-		}
 	}
 
 	// Sort the fork block numbers & times to permit chronological XOR

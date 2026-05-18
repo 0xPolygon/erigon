@@ -18,7 +18,6 @@ package bridge
 
 import (
 	"context"
-	"errors"
 	"time"
 )
 
@@ -31,10 +30,6 @@ func NewIdleClient() Client {
 
 func (c *IdleClient) FetchStateSyncEvents(ctx context.Context, fromId uint64, to time.Time, limit int) ([]*EventRecordWithTime, error) {
 	return nil, nil
-}
-
-func (c *IdleClient) FetchStateSyncEventsByTime(context.Context, uint64, int64, int) ([]*EventRecordWithTime, error) {
-	return nil, errors.New("bridge: deterministic state sync requires Heimdall; IdleClient does not support FetchStateSyncEventsByTime")
 }
 
 func (c *IdleClient) Close() {

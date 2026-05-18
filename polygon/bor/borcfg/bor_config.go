@@ -53,8 +53,6 @@ type BorConfig struct {
 	LisovoProBlock    *big.Int `json:"lisovoProBlock"`    // LisovoPro switch block (nil = no fork, 0 = already on LisovoPro)
 	GiuglianoBlock    *big.Int `json:"giuglianoBlock"`    // Giugliano switch block (nil = no fork, 0 = already on Giugliano)
 	ChicagoBlock      *big.Int `json:"chicagoBlock"`      // Chicago switch block (nil = no fork, 0 = already on Chicago)
-	// TODO marcello define HF block's height
-	DeterministicStateSyncBlock *big.Int `json:"deterministicStateSyncBlock"` // DeterministicStateSync switch block (nil = no fork, 0 = already on DeterministicStateSync)
 
 	StateSyncConfirmationDelay map[string]uint64         `json:"stateSyncConfirmationDelay"` // StateSync Confirmation Delay, in seconds, to calculate `to`
 	Coinbase                   map[string]common.Address `json:"coinbase"`                   // coinbase address
@@ -257,14 +255,6 @@ func (c *BorConfig) IsChicago(number uint64) bool {
 
 func (c *BorConfig) GetChicagoBlock() *big.Int {
 	return c.ChicagoBlock
-}
-
-func (c *BorConfig) IsDeterministicStateSync(number uint64) bool {
-	return isForked(c.DeterministicStateSyncBlock, number)
-}
-
-func (c *BorConfig) GetDeterministicStateSyncBlock() *big.Int {
-	return c.DeterministicStateSyncBlock
 }
 
 func (c *BorConfig) CalculateStateSyncDelay(number uint64) uint64 {

@@ -132,10 +132,10 @@ func (tx *StateSyncTx) RawSignatureValues() (*uint256.Int, *uint256.Int, *uint25
 }
 
 func (tx *StateSyncTx) EncodingSize() int {
+	// Return the inner size (type byte + RLP body)
 	var b bytes.Buffer
 	_ = tx.encode(&b)
-	data := make([]byte, 1+b.Len())
-	return rlp.StringLen(data)
+	return 1 + b.Len()
 }
 
 // EncodeRLP implements rlp.Encoder for database storage.

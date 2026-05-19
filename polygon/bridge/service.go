@@ -35,6 +35,14 @@ import (
 	"github.com/erigontech/erigon/polygon/bor/borcfg"
 )
 
+// stateSyncScraperLag is how far behind wall-clock the scraper queries
+// Heimdall, in seconds. Heimdall's post-HF deterministic state-sync endpoint
+// only returns results when latestIndexedTime > cutoff (the stability gate);
+// since latestIndexedTime is always behind wall-clock by at least one Heimdall
+// block, polling at time.Now() always fires the gate. A 30s lag leaves
+// comfortable headroom over Heimdall's ~2-3s block time + indexing latency.
+const stateSyncScraperLag = 30 * time.Second
+
 type eventFetcher interface {
 	FetchStateSyncEvents(ctx context.Context, fromId uint64, to time.Time, limit int) ([]*EventRecordWithTime, error)
 }
@@ -180,7 +188,13 @@ func (s *Service) Run(ctx context.Context) error {
 
 		// start scraping events
 		from := lastFetchedEventId + 1
-		to := time.Now()
+		// Lag the cutoff behind wall-clock so Heimdall's post-HF stability gate
+		// (which holds responses until a committed block past the cutoff has
+		// been indexed) can clear. Heimdall block time is ~2-3s on mainnet, so
+		// a 30s lag leaves comfortable headroom. Without this the gate would
+		// fire on every scraper poll and the scraper would stop making
+		// progress. Pre-HF Heimdall ignores the gate, so the lag is harmless.
+		to := time.Now().Add(-stateSyncScraperLag)
 		events, err := s.eventFetcher.FetchStateSyncEvents(ctx, from, to, StateEventsFetchLimit)
 		if err != nil {
 			if liberrors.IsOneOf(err, s.transientErrors) {

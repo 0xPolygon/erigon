@@ -147,3 +147,71 @@ func TestEthCallStateDiffOverride_WarmResetSSTORE(t *testing.T) {
 		}
 	})
 }
+
+// TestEthCallStateDiffOverride_BeatsReplayDirty pins the eth_callMany
+// behavior: when an override is applied after a replayed transaction has
+// already written the same slot, the override must win for both reads.
+// FinalizeTx writes dirtyStorage through to the writer but does not clear
+// it, so without an explicit dirty-clear in setCommittedStorage the replay
+// value would still shadow GetState — only GetCommittedState would change.
+func TestEthCallStateDiffOverride_BeatsReplayDirty(t *testing.T) {
+	t.Parallel()
+
+	// SLOAD slot 1, return the 32-byte value.
+	code := []byte{
+		byte(vm.PUSH1), 0x01,
+		byte(vm.SLOAD),
+		byte(vm.PUSH1), 0x00,
+		byte(vm.MSTORE),
+		byte(vm.PUSH1), 0x20,
+		byte(vm.PUSH1), 0x00,
+		byte(vm.RETURN),
+	}
+	addr := common.HexToAddress("0xaa")
+	slot := common.BigToHash(uint256.NewInt(1).ToBig())
+	replay := *uint256.NewInt(0xdead)
+	override := *uint256.NewInt(0x42)
+
+	db := testTemporalDB(t)
+	tx, domains := testTemporalTxSD(t, db)
+	s := state.New(state.NewReaderV3(domains.AsGetter(tx)))
+	s.SetCode(addr, code)
+
+	// Simulate a replayed tx writing slot 1.
+	if err := s.SetState(addr, slot, replay); err != nil {
+		t.Fatalf("seed replay: %v", err)
+	}
+	// stateOverride applied after replay.
+	if err := s.SetStateOverride(addr, slot, override); err != nil {
+		t.Fatalf("SetStateOverride: %v", err)
+	}
+
+	// Direct read: GetCommittedState and GetState must both see the override.
+	var got uint256.Int
+	if err := s.GetCommittedState(addr, slot, &got); err != nil {
+		t.Fatalf("GetCommittedState: %v", err)
+	}
+	if got.Cmp(&override) != 0 {
+		t.Fatalf("GetCommittedState: got %s, want %s", got.Hex(), override.Hex())
+	}
+	if err := s.GetState(addr, slot, &got); err != nil {
+		t.Fatalf("GetState: %v", err)
+	}
+	if got.Cmp(&override) != 0 {
+		t.Fatalf("GetState: got %s, want %s (replay leaked through dirtyStorage)", got.Hex(), override.Hex())
+	}
+
+	// EVM-level read via SLOAD must match too.
+	ret, _, err := Call(addr, nil, &Config{State: s})
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if len(ret) != 32 {
+		t.Fatalf("expected 32-byte return, got %d", len(ret))
+	}
+	var sload uint256.Int
+	sload.SetBytes(ret)
+	if sload.Cmp(&override) != 0 {
+		t.Fatalf("SLOAD: got %s, want %s (replay leaked through dirtyStorage)", sload.Hex(), override.Hex())
+	}
+}

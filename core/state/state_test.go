@@ -147,6 +147,39 @@ func TestSnapshot(t *testing.T) {
 	require.Equal(t, uint256.Int{}, value)
 }
 
+func TestSetStateOverrideReplacesDirtyStorage(t *testing.T) {
+	t.Parallel()
+	_, tx, domains := NewTestRwTx(t)
+
+	err := rawdbv3.TxNums.Append(tx, 1, 1)
+	require.NoError(t, err)
+
+	state := New(NewReaderV3(domains.AsGetter(tx)))
+
+	addr := toAddr([]byte("aa"))
+	key := common.BigToHash(uint256.NewInt(1).ToBig())
+	replayed := *uint256.NewInt(1)
+	override := *uint256.NewInt(2)
+
+	require.NoError(t, state.SetState(addr, key, replayed))
+	require.NoError(t, state.FinalizeTx(&chain.Rules{}, NewNoopWriter()))
+
+	var value uint256.Int
+	require.NoError(t, state.GetState(addr, key, &value))
+	require.Equal(t, replayed, value)
+
+	require.NoError(t, state.SetStateOverride(addr, key, override))
+	require.NoError(t, state.GetState(addr, key, &value))
+	require.Equal(t, override, value)
+	require.NoError(t, state.GetCommittedState(addr, key, &value))
+	require.Equal(t, override, value)
+
+	obj, err := state.getStateObject(addr)
+	require.NoError(t, err)
+	_, dirty := obj.dirtyStorage[key]
+	require.False(t, dirty)
+}
+
 func TestSnapshotEmpty(t *testing.T) {
 	t.Parallel()
 	_, tx, domains := NewTestRwTx(t)

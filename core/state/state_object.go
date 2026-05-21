@@ -283,13 +283,9 @@ func (so *stateObject) setState(key common.Hash, value uint256.Int) {
 	so.dirtyStorage[key] = value
 }
 
-// setCommittedStorage seeds a slot as if its value were already on-chain.
-// EIP-2200 reads GetCommittedState for the original value; geth's stateDiff
-// override makes that read return the override (via Finalise). Erigon's
-// SetState only writes dirtyStorage, so without this the original stays 0.
-// Clear any pending dirty value as well: stateDiff is a base-state override
-// and must replace replay-produced current storage too.
+// setCommittedStorage makes stateDiff visible as both current and original storage.
 func (so *stateObject) setCommittedStorage(key common.Hash, value uint256.Int) {
+	// Drop replayed writes so the override wins after callMany-style replay.
 	delete(so.dirtyStorage, key)
 	so.originStorage[key] = value
 	so.blockOriginStorage[key] = value

@@ -27,43 +27,10 @@ import (
 	"github.com/erigontech/erigon/core/vm"
 )
 
-// TestEthCallStateDiffOverride_WarmResetSSTORE reproduces the warm-reset
-// case from pos-e2e tests/execution-specs/evm/pip88-erigon-sload-sstore-chicago-gas.bats
-// in-process, contrasting the broken eth_call stateDiff path (raw SetState)
-// against the fixed path (SetStateOverride).
-//
-// The bytecode warms slot 1 with an SLOAD, then SSTOREs slot 1 := 2 and
-// returns gas-before minus gas-after. EIP-2200 inspects both GetState (current)
-// and GetCommittedState (original):
-//   - Broken: only dirtyStorage carries the override, so original=0, current=1.
-//     The "dirty update" branch fires → SSTORE costs WarmStorageReadCostEIP2929 (100).
-//   - Fixed: originStorage also carries the override, so original=current=1,
-//     value=2. The "reset existing slot" branch fires →
-//     SSTORE costs SstoreResetGasEIP2200 - ColdSloadCostEIP2929 (2900).
-//
-// Inner sandwich (PUSH PUSH SSTORE GAS) adds 3+3+X+2 around SSTORE cost X.
-// Bor reports the reset value because override.go calls statedb.Finalise after
-// applying the diff, which promotes dirty → pending storage and makes
-// GetCommittedState return it. Erigon's IntraBlockState has no equivalent
-// public path, so we seed originStorage directly.
 func TestEthCallStateDiffOverride_WarmResetSSTORE(t *testing.T) {
 	t.Parallel()
 
-	// 60 01     PUSH1 0x01
-	// 54        SLOAD            warms slot 1 into the access list
-	// 50        POP
-	// 5a        GAS              push gas_before
-	// 60 02     PUSH1 0x02
-	// 60 01     PUSH1 0x01
-	// 55        SSTORE           slot 1 := 2
-	// 5a        GAS              push gas_after
-	// 90        SWAP1
-	// 03        SUB              consumed = gas_before - gas_after
-	// 60 00     PUSH1 0x00
-	// 52        MSTORE           mem[0:32] = consumed
-	// 60 20     PUSH1 0x20
-	// 60 00     PUSH1 0x00
-	// f3       RETURN           return mem[0:32]
+	// Warm slot 1, SSTORE slot 1 := 2, and return the gas delta around SSTORE.
 	code := []byte{
 		byte(vm.PUSH1), 0x01,
 		byte(vm.SLOAD),
@@ -86,12 +53,10 @@ func TestEthCallStateDiffOverride_WarmResetSSTORE(t *testing.T) {
 	slot := common.BigToHash(uint256.NewInt(1).ToBig())
 	one := *uint256.NewInt(1)
 
-	// EIP-2200 reset path: SstoreResetGasEIP2200 - ColdSloadCostEIP2929 = 5000 - 2100.
-	const sstoreResetWarm = 2900
-	// EIP-2200 dirty update branch: WarmStorageReadCostEIP2929.
-	const sstoreDirty = 100
-	// PUSH1 (3) + PUSH1 (3) + GAS (2) framing around the inner SSTORE.
-	const sandwich = 3 + 3 + 2
+	// stateDiff must be visible as the original value, or SSTORE takes the cheap dirty path.
+	const sstoreResetWarm = 2900 // EIP-2200 reset (warm): SstoreResetGas - ColdSloadCost.
+	const sstoreDirty = 100      // EIP-2200 dirty update: WarmStorageReadCost.
+	const sandwich = 3 + 3 + 2   // PUSH1 + PUSH1 + GAS around the inner SSTORE.
 
 	measure := func(seed func(s *state.IntraBlockState)) uint64 {
 		db := testTemporalDB(t)
@@ -101,12 +66,11 @@ func TestEthCallStateDiffOverride_WarmResetSSTORE(t *testing.T) {
 		seed(s)
 		ret, _, err := Call(addr, nil, &Config{State: s})
 		if err != nil {
-			t.Fatalf("Call failed: %v", err)
+			t.Fatalf("Call: %v", err)
 		}
 		if len(ret) != 32 {
-			t.Fatalf("expected 32-byte return, got %d bytes", len(ret))
+			t.Fatalf("ret len: %d", len(ret))
 		}
-		// Return value is a 32-byte big-endian uint; consumed gas comfortably fits in 64 bits.
 		return binary.BigEndian.Uint64(ret[24:])
 	}
 
@@ -116,9 +80,8 @@ func TestEthCallStateDiffOverride_WarmResetSSTORE(t *testing.T) {
 				t.Fatalf("SetState: %v", err)
 			}
 		})
-		want := uint64(sstoreDirty + sandwich)
-		if got != want {
-			t.Fatalf("dirty-branch gas: got %d, want %d", got, want)
+		if want := uint64(sstoreDirty + sandwich); got != want {
+			t.Fatalf("got %d, want %d", got, want)
 		}
 	})
 
@@ -128,36 +91,26 @@ func TestEthCallStateDiffOverride_WarmResetSSTORE(t *testing.T) {
 				t.Fatalf("SetStateOverride: %v", err)
 			}
 		})
-		want := uint64(sstoreResetWarm + sandwich)
-		if got != want {
-			t.Fatalf("reset-branch gas: got %d, want %d", got, want)
+		if want := uint64(sstoreResetWarm + sandwich); got != want {
+			t.Fatalf("got %d, want %d", got, want)
 		}
 	})
 
 	t.Run("delta is the EIP-2200 reset/dirty spread", func(t *testing.T) {
-		broken := measure(func(s *state.IntraBlockState) {
-			_ = s.SetState(addr, slot, one)
-		})
-		fixed := measure(func(s *state.IntraBlockState) {
-			_ = s.SetStateOverride(addr, slot, one)
-		})
+		broken := measure(func(s *state.IntraBlockState) { _ = s.SetState(addr, slot, one) })
+		fixed := measure(func(s *state.IntraBlockState) { _ = s.SetStateOverride(addr, slot, one) })
 		if fixed-broken != sstoreResetWarm-sstoreDirty {
-			t.Fatalf("expected reset-vs-dirty spread %d, got %d (broken=%d fixed=%d)",
-				sstoreResetWarm-sstoreDirty, fixed-broken, broken, fixed)
+			t.Fatalf("spread %d, want %d (broken=%d fixed=%d)",
+				fixed-broken, sstoreResetWarm-sstoreDirty, broken, fixed)
 		}
 	})
 }
 
-// TestEthCallStateDiffOverride_BeatsReplayDirty pins the eth_callMany
-// behavior: when an override is applied after a replayed transaction has
-// already written the same slot, the override must win for both reads.
-// FinalizeTx writes dirtyStorage through to the writer but does not clear
-// it, so without an explicit dirty-clear in setCommittedStorage the replay
-// value would still shadow GetState — only GetCommittedState would change.
+// Regression: stateDiff must win over a replay-dirtied slot.
+// eth_callMany applies overrides after replay, and FinalizeTx leaves dirtyStorage in memory.
 func TestEthCallStateDiffOverride_BeatsReplayDirty(t *testing.T) {
 	t.Parallel()
 
-	// SLOAD slot 1, return the 32-byte value.
 	code := []byte{
 		byte(vm.PUSH1), 0x01,
 		byte(vm.SLOAD),
@@ -177,16 +130,13 @@ func TestEthCallStateDiffOverride_BeatsReplayDirty(t *testing.T) {
 	s := state.New(state.NewReaderV3(domains.AsGetter(tx)))
 	s.SetCode(addr, code)
 
-	// Simulate a replayed tx writing slot 1.
 	if err := s.SetState(addr, slot, replay); err != nil {
 		t.Fatalf("seed replay: %v", err)
 	}
-	// stateOverride applied after replay.
 	if err := s.SetStateOverride(addr, slot, override); err != nil {
 		t.Fatalf("SetStateOverride: %v", err)
 	}
 
-	// Direct read: GetCommittedState and GetState must both see the override.
 	var got uint256.Int
 	if err := s.GetCommittedState(addr, slot, &got); err != nil {
 		t.Fatalf("GetCommittedState: %v", err)
@@ -198,20 +148,19 @@ func TestEthCallStateDiffOverride_BeatsReplayDirty(t *testing.T) {
 		t.Fatalf("GetState: %v", err)
 	}
 	if got.Cmp(&override) != 0 {
-		t.Fatalf("GetState: got %s, want %s (replay leaked through dirtyStorage)", got.Hex(), override.Hex())
+		t.Fatalf("GetState: got %s, want %s", got.Hex(), override.Hex())
 	}
 
-	// EVM-level read via SLOAD must match too.
 	ret, _, err := Call(addr, nil, &Config{State: s})
 	if err != nil {
 		t.Fatalf("Call: %v", err)
 	}
 	if len(ret) != 32 {
-		t.Fatalf("expected 32-byte return, got %d", len(ret))
+		t.Fatalf("ret len: %d", len(ret))
 	}
 	var sload uint256.Int
 	sload.SetBytes(ret)
 	if sload.Cmp(&override) != 0 {
-		t.Fatalf("SLOAD: got %s, want %s (replay leaked through dirtyStorage)", sload.Hex(), override.Hex())
+		t.Fatalf("SLOAD: got %s, want %s", sload.Hex(), override.Hex())
 	}
 }

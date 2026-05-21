@@ -61,9 +61,7 @@ func (overrides *StateOverrides) Override(state *state.IntraBlockState) error {
 			}
 			state.SetStorage(addr, intState)
 		}
-		// Apply state diff into specified accounts. Use SetStateOverride so the
-		// value is also visible to GetCommittedState — without this, EIP-2200
-		// SSTORE gas accounting reads original=0 and diverges from Bor/geth.
+		// Apply stateDiff as base storage so SSTORE sees the overridden original value.
 		if account.StateDiff != nil {
 			for key, value := range *account.StateDiff {
 				key := key

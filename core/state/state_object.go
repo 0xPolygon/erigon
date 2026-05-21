@@ -283,6 +283,16 @@ func (so *stateObject) setState(key common.Hash, value uint256.Int) {
 	so.dirtyStorage[key] = value
 }
 
+// setCommittedStorage seeds a slot as if its value were already on-chain.
+// EIP-2200 reads GetCommittedState for the original value; geth's stateDiff
+// override makes that read return the override (via Finalise). Erigon's
+// SetState only writes dirtyStorage, so without this the original stays 0
+// and warm-reset SSTORE drops into the dirty branch.
+func (so *stateObject) setCommittedStorage(key common.Hash, value uint256.Int) {
+	so.originStorage[key] = value
+	so.blockOriginStorage[key] = value
+}
+
 // updateStotage writes cached storage modifications into the object's storage trie.
 func (so *stateObject) updateStotage(stateWriter StateWriter) error {
 	for key, value := range so.dirtyStorage {

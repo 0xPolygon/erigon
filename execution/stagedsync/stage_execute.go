@@ -489,6 +489,12 @@ func PruneExecutionStage(s *PruneState, tx kv.RwTx, cfg ExecuteBlockCfg, ctx con
 				"externalTx", useExternalTx,
 			)
 		}
+	} else if cfg.syncCfg.UseForkchoiceFinality {
+		// Forkchoice finality keeps the node stable at tip, eliminating the natural
+		// syncToTip fallbacks that triggered initialCycle=true with aggressive pruning.
+		// Use aggressive timeout (>=1min triggers adaptive batch ramp-up in PruneSmallBatches)
+		// to drain accumulated commitment history at step boundaries.
+		pruneTimeout = 60 * time.Second
 	}
 
 	pruneSmallBatchesStartTime := time.Now()

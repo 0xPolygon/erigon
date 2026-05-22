@@ -1140,6 +1140,10 @@ var (
 		Usage: "EXPERIMENTAL: enables concurrent trie for commitment",
 		Value: false,
 	}
+	UseForkchoiceFinalityFlag = cli.BoolFlag{
+		Name:  "experimental.use-forkchoice-finality",
+		Usage: "Skip changeset generation for blocks finalized by forkchoice (e.g., Polygon milestones). Reduces overhead but requires chaindata reset if finality is reverted.",
+	}
 	GDBMeFlag = cli.BoolFlag{
 		Name:  "gdbme",
 		Usage: "restart erigon under gdb for debug purposes",

@@ -989,6 +989,47 @@ func (at *AggregatorRoTx) CanPrune(tx kv.Tx, untilTx uint64) bool {
 	return false
 }
 
+// IIBacklogInfo returns the maximum backlog across inverted indexes and diagnostic info.
+// Backlog = txNums in MDBX that should be pruned (below files.EndTxNum).
+// Also returns list of IIs with visibility issues (EndTxNum = 0).
+func (at *AggregatorRoTx) IIBacklogInfo(tx kv.Tx) (maxBacklog uint64, blockedIIs []string) {
+	for _, ii := range at.iis {
+		endTxNum := ii.files.EndTxNum()
+		if endTxNum == 0 {
+			// No visible files - can't prune this II
+			blockedIIs = append(blockedIIs, ii.ii.FilenameBase)
+			continue
+		}
+		minTxNum := ii.ii.minTxNumInDB(tx)
+		if minTxNum < endTxNum {
+			backlog := endTxNum - minTxNum
+			if backlog > maxBacklog {
+				maxBacklog = backlog
+			}
+		}
+	}
+	return maxBacklog, blockedIIs
+}
+
+// CommitmentBacklogInfo returns the backlog for CommitmentDomain history pruning.
+// Backlog = txNums in MDBX that could be pruned (history entries below files.EndTxNum).
+// Returns 0 if no pruning is possible or history is disabled.
+func (at *AggregatorRoTx) CommitmentBacklogInfo(tx kv.Tx) uint64 {
+	cd := at.d[kv.CommitmentDomain]
+	if cd.ht.h.HistoryDisabled {
+		return 0
+	}
+	canHist, txTo := cd.ht.canPruneUntil(tx, math.MaxUint64)
+	if !canHist || txTo == 0 {
+		return 0
+	}
+	minTxNum := cd.ht.iit.ii.minTxNumInDB(tx)
+	if minTxNum >= txTo {
+		return 0
+	}
+	return txTo - minTxNum
+}
+
 // PruneSmallBatches is not cancellable, it's over when it's over or failed.
 // It fills whole timeout with pruning by small batches (of 100 keys) and making some progress
 func (at *AggregatorRoTx) PruneSmallBatches(ctx context.Context, timeout time.Duration, tx kv.RwTx) (haveMore bool, err error) {

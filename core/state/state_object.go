@@ -283,6 +283,14 @@ func (so *stateObject) setState(key common.Hash, value uint256.Int) {
 	so.dirtyStorage[key] = value
 }
 
+// setCommittedStorage makes stateDiff visible as both current and original storage.
+func (so *stateObject) setCommittedStorage(key common.Hash, value uint256.Int) {
+	// Drop replayed writes so the override wins after callMany-style replay.
+	delete(so.dirtyStorage, key)
+	so.originStorage[key] = value
+	so.blockOriginStorage[key] = value
+}
+
 // updateStotage writes cached storage modifications into the object's storage trie.
 func (so *stateObject) updateStotage(stateWriter StateWriter) error {
 	for key, value := range so.dirtyStorage {

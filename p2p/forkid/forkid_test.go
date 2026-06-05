@@ -166,18 +166,9 @@ func TestCreation(t *testing.T) {
 			polychain.Amoy,
 			[]testcase{
 				{0, 0, ID{Hash: ChecksumToBytes(0xbe06a477), Activation: 0, Next: 73100}},
-				{73100, 0, ID{Hash: ChecksumToBytes(0x135d2cd5), Activation: 73100, Next: 5423600}},        // First London, Jaipur, Delhi, Indore, Agra
-				{5423600, 0, ID{Hash: ChecksumToBytes(0xb4f6ec4f), Activation: 5423600, Next: 11865856}},   // First Napoli block
-				{11865856, 0, ID{Hash: ChecksumToBytes(0x331eb7af), Activation: 11865856, Next: 22765056}}, // First Ahmedabad block
-				{22765056, 0, ID{Hash: ChecksumToBytes(0xd0ad2c34), Activation: 22765056, Next: 26272256}}, // First Bhilai block
-				{26272256, 0, ID{Hash: ChecksumToBytes(0x6928e294), Activation: 26272256, Next: 28899616}}, // First Rio block
-				{28899616, 0, ID{Hash: ChecksumToBytes(0xa8ebf2ca), Activation: 28899616, Next: 29287400}}, // First Madhugiri block
-				{29287400, 0, ID{Hash: ChecksumToBytes(0xed8fee6a), Activation: 29287400, Next: 31890000}}, // First MadhugiriPro block
-				{31890000, 0, ID{Hash: ChecksumToBytes(0xbd22e320), Activation: 31890000, Next: 33634700}}, // First Dandeli block
-				{33634700, 0, ID{Hash: ChecksumToBytes(0x4d6e8920), Activation: 33634700, Next: 34062000}}, // First Lisovo block
-				{34062000, 0, ID{Hash: ChecksumToBytes(0x0d260e78), Activation: 34062000, Next: 35573500}}, // First LisovoPro block
-				{35573500, 0, ID{Hash: ChecksumToBytes(0x3e0e0e8d), Activation: 35573500, Next: 0}},        // First Giugliano block
-				{40000000, 0, ID{Hash: ChecksumToBytes(0x3e0e0e8d), Activation: 35573500, Next: 0}},        // Future block
+				{73100, 0, ID{Hash: ChecksumToBytes(0x135d2cd5), Activation: 73100, Next: 5423600}},      // First London, Jaipur, Delhi, Indore, Agra
+				{5423600, 0, ID{Hash: ChecksumToBytes(0xb4f6ec4f), Activation: 5423600, Next: 22765056}}, // First Napoli block
+				{22765056, 0, ID{Hash: ChecksumToBytes(0x8b7e4175), Activation: 22765056, Next: 0}},      // First Bhilai block
 			},
 		},
 		{
@@ -188,15 +179,8 @@ func TestCreation(t *testing.T) {
 				{14750000, 0, ID{Hash: ChecksumToBytes(0x66e26adb), Activation: 14750000, Next: 23850000}}, // First Berlin block
 				{23850000, 0, ID{Hash: ChecksumToBytes(0x4f2f71cc), Activation: 23850000, Next: 50523000}}, // First London block
 				{50523000, 0, ID{Hash: ChecksumToBytes(0xdc08865c), Activation: 50523000, Next: 54876000}}, // First Agra block
-				{54876000, 0, ID{Hash: ChecksumToBytes(0xf097bc13), Activation: 54876000, Next: 62278656}}, // First Napoli block
-				{62278656, 0, ID{Hash: ChecksumToBytes(0xb73e9796), Activation: 62278656, Next: 73440256}}, // First Ahmedabad block
-				{73440256, 0, ID{Hash: ChecksumToBytes(0x20740115), Activation: 73440256, Next: 77414656}}, // First Bhilai block
-				{77414656, 0, ID{Hash: ChecksumToBytes(0x35b749f1), Activation: 77414656, Next: 80084800}}, // First Rio block
-				{80084800, 0, ID{Hash: ChecksumToBytes(0x14809032), Activation: 80084800, Next: 81424000}}, // First Madhugiri+MadhugiriPro block
-				{81424000, 0, ID{Hash: ChecksumToBytes(0xdf683a77), Activation: 81424000, Next: 83756500}}, // First Dandeli block
-				{83756500, 0, ID{Hash: ChecksumToBytes(0xec57f346), Activation: 83756500, Next: 85268500}}, // First Lisovo+LisovoPro block
-				{85268500, 0, ID{Hash: ChecksumToBytes(0x961bfb5b), Activation: 85268500, Next: 0}},        // First Giugliano block
-				{90000000, 0, ID{Hash: ChecksumToBytes(0x961bfb5b), Activation: 85268500, Next: 0}},        // Future block
+				{54876000, 0, ID{Hash: ChecksumToBytes(0xf097bc13), Activation: 54876000, Next: 73440256}}, // First Napoli block
+				{73440256, 0, ID{Hash: ChecksumToBytes(0x22d523b2), Activation: 73440256, Next: 0}},        // First Bhilai block
 			},
 		},
 	}

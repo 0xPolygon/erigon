@@ -390,7 +390,7 @@ func TestComputeEpochSecretKey(t *testing.T) {
 
 	epochSecretKeyShares := []*EpochSecretKeyShare{}
 	for i := 0; i < n; i++ {
-		vs := []*big.Int{}
+		vs := make([]*big.Int, 0, len(ps))
 		for _, p := range ps {
 			v := p.EvalForKeyper(i)
 			vs = append(vs, v)

@@ -77,7 +77,7 @@ func TestAggregatorV3_RestartOnFiles(t *testing.T) {
 	keys := make([][]byte, txs)
 
 	for txNum := uint64(1); txNum <= txs; txNum++ {
-		addr, loc := make([]byte, length.Addr), make([]byte, length.Hash)
+		addr, loc := make([]byte, length.Addr, length.Addr+length.Hash), make([]byte, length.Hash)
 		n, err := rnd.Read(addr)
 		require.NoError(t, err)
 		require.Equal(t, length.Addr, n)
@@ -219,7 +219,7 @@ func TestAggregatorV3_ReplaceCommittedKeys(t *testing.T) {
 	var prev1, prev2 []byte
 	var txNum uint64
 	for txNum = uint64(1); txNum <= txs/2; txNum++ {
-		addr, loc := make([]byte, length.Addr), make([]byte, length.Hash)
+		addr, loc := make([]byte, length.Addr, length.Addr+length.Hash), make([]byte, length.Hash)
 		n, err := rnd.Read(addr)
 		require.NoError(t, err)
 		require.Equal(t, length.Addr, n)

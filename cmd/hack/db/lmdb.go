@@ -914,15 +914,19 @@ func Defrag() error {
 		return err
 	}
 	fmt.Println("------------------- 15 -------------------")
+	step15gen := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return true, generate2(tx, 1000) }
+	step15ch1 := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change1(tx) }
+	step15ch2a := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change2(tx) }
+	step15ch3a := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change3(tx) }
+	step15ch2b := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change2(tx) }
+	step15ch3b := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change3(tx) }
+	step15ch2c := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change2(tx) }
+	step15ch3c := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change3(tx) }
 	if err := defragSteps("vis15", oneBucketCfg,
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return true, generate2(tx, 1000) },
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change1(tx) },
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change2(tx) },
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change3(tx) },
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change2(tx) },
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change3(tx) },
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change2(tx) },
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change3(tx) },
+		step15gen, step15ch1,
+		step15ch2a, step15ch3a,
+		step15ch2b, step15ch3b,
+		step15ch2c, step15ch3c,
 	); err != nil {
 		return err
 	}
@@ -931,24 +935,29 @@ func Defrag() error {
 	readerErrorCh := make(chan error)
 
 	fmt.Println("------------------- 16 -------------------")
+	step16gen := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return true, generate2(tx, 1000) }
+	step16ch1 := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change1(tx) }
+	step16launch := func(kv kv.RwDB, tx kv.RwTx) (bool, error) {
+		return launchReader(kv, tx, "another_short_value_1", readerStartCh, readerErrorCh)
+	}
+	step16ch2a := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change2(tx) }
+	step16ch3a := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change3(tx) }
+	step16ch2b := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change2(tx) }
+	step16ch3b := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change3(tx) }
+	step16ch2c := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change2(tx) }
+	step16ch3c := func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change3(tx) }
+	step16start := func(_ kv.RwDB, tx kv.RwTx) (bool, error) {
+		return startReader(tx, readerStartCh)
+	}
+	step16check := func(_ kv.RwDB, tx kv.RwTx) (bool, error) {
+		return checkReader(tx, readerErrorCh)
+	}
 	if err := defragSteps("vis16", oneBucketCfg,
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return true, generate2(tx, 1000) },
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change1(tx) },
-		func(kv kv.RwDB, tx kv.RwTx) (bool, error) {
-			return launchReader(kv, tx, "another_short_value_1", readerStartCh, readerErrorCh)
-		},
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change2(tx) },
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change3(tx) },
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change2(tx) },
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change3(tx) },
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change2(tx) },
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) { return change3(tx) },
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) {
-			return startReader(tx, readerStartCh)
-		},
-		func(_ kv.RwDB, tx kv.RwTx) (bool, error) {
-			return checkReader(tx, readerErrorCh)
-		},
+		step16gen, step16ch1, step16launch,
+		step16ch2a, step16ch3a,
+		step16ch2b, step16ch3b,
+		step16ch2c, step16ch3c,
+		step16start, step16check,
 	); err != nil {
 		return err
 	}

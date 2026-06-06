@@ -623,7 +623,7 @@ func (s *Sentinel) Status() *cltypes.Status {
 
 func (s *Sentinel) PeersList() []peer.AddrInfo {
 	pids := s.host.Network().Peers()
-	infos := []peer.AddrInfo{}
+	infos := make([]peer.AddrInfo, 0, len(pids))
 	for _, pid := range pids {
 		infos = append(infos, s.host.Network().Peerstore().PeerInfo(pid))
 	}

@@ -221,9 +221,12 @@ func TestT8n(t *testing.T) {
 		},
 	} {
 
-		args := []string{"t8n"}
-		args = append(args, tc.output.get()...)
-		args = append(args, tc.input.get(tc.base)...)
+		outputArgs := tc.output.get()
+		inputArgs := tc.input.get(tc.base)
+		args := make([]string, 0, 1+len(outputArgs)+len(inputArgs))
+		args = append(args, "t8n")
+		args = append(args, outputArgs...)
+		args = append(args, inputArgs...)
 		var qArgs []string // quoted args for debugging purposes
 		for _, arg := range args {
 			if len(arg) == 0 {

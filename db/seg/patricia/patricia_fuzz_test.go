@@ -107,7 +107,7 @@ func FuzzLongestMatch(f *testing.F) {
 			pt.Insert(key, val)
 			keyMap[string(key)] = val
 		}
-		var keys []string
+		keys := make([]string, 0, len(keyMap))
 		for key := range keyMap {
 			keys = append(keys, key)
 		}

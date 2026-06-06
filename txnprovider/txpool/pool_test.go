@@ -408,7 +408,8 @@ func TestRecoverSignerFromRLP_ValidData(t *testing.T) {
 	require.NoError(t, rlp.EncodeInt(0, data, b[:]))
 
 	// Prepare hash data exactly as before
-	hashData := []byte{params.SetCodeMagicPrefix}
+	hashData := make([]byte, 0, 1+len(data.Bytes()))
+	hashData = append(hashData, params.SetCodeMagicPrefix)
 	hashData = append(hashData, data.Bytes()...)
 	hash := crypto.Keccak256Hash(hashData)
 

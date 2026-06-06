@@ -354,9 +354,9 @@ func TestInputVariableInputLength(t *testing.T) {
 		t.Error(err)
 	}
 
-	offset := make([]byte, 32)
+	offset := make([]byte, 32, 32+32+32)
 	offset[31] = 32
-	length := make([]byte, 32)
+	length := make([]byte, 32, 64)
 	length[31] = byte(len(strin))
 	value := common.RightPadBytes([]byte(strin), 32)
 	exp := append(offset, append(length, value...)...)
@@ -386,9 +386,9 @@ func TestInputVariableInputLength(t *testing.T) {
 		t.Error(err)
 	}
 
-	offset1 := make([]byte, 32)
+	offset1 := make([]byte, 32, 64)
 	offset1[31] = 64
-	length1 := make([]byte, 32)
+	length1 := make([]byte, 32, 64)
 	length1[31] = byte(len(str1))
 	value1 := common.RightPadBytes([]byte(str1), 32)
 
@@ -415,9 +415,9 @@ func TestInputVariableInputLength(t *testing.T) {
 		t.Error(err)
 	}
 
-	offset1 = make([]byte, 32)
+	offset1 = make([]byte, 32, 64)
 	offset1[31] = 64
-	length1 = make([]byte, 32)
+	length1 = make([]byte, 32, 96)
 	length1[31] = byte(len(str1))
 	value1 = common.RightPadBytes([]byte(str1), 64)
 	offset2[31] = 160
@@ -440,15 +440,15 @@ func TestInputVariableInputLength(t *testing.T) {
 		t.Error(err)
 	}
 
-	offset1 = make([]byte, 32)
+	offset1 = make([]byte, 32, 64)
 	offset1[31] = 64
-	length1 = make([]byte, 32)
+	length1 = make([]byte, 32, 96)
 	length1[31] = byte(len(str1))
 	value1 = common.RightPadBytes([]byte(str1), 64)
 
 	offset2 = make([]byte, 32)
 	offset2[31] = 160
-	length2 = make([]byte, 32)
+	length2 = make([]byte, 32, 96)
 	length2[31] = byte(len(str2))
 	value2 = common.RightPadBytes([]byte(str2), 64)
 
@@ -478,9 +478,9 @@ func TestInputFixedArrayAndVariableInputLength(t *testing.T) {
 	}
 
 	// generate expected output
-	offset := make([]byte, 32)
+	offset := make([]byte, 32, 96)
 	offset[31] = 96
-	length := make([]byte, 32)
+	length := make([]byte, 32, 64)
 	length[31] = byte(len(strin))
 	strvalue := common.RightPadBytes([]byte(strin), 32)
 	arrinvalue1 := common.LeftPadBytes(arrin[0].Bytes(), 32)
@@ -504,9 +504,9 @@ func TestInputFixedArrayAndVariableInputLength(t *testing.T) {
 	}
 
 	// generate expected output
-	offset = make([]byte, 32)
+	offset = make([]byte, 32, 96)
 	offset[31] = 96
-	length = make([]byte, 32)
+	length = make([]byte, 32, 64)
 	length[31] = byte(len(strin))
 	strvalue = common.RightPadBytes([]byte(strin), 32)
 	arrinvalue1 = common.LeftPadBytes(arrin[0].Bytes(), 32)
@@ -531,16 +531,16 @@ func TestInputFixedArrayAndVariableInputLength(t *testing.T) {
 	}
 
 	// generate expected output
-	stroffset := make([]byte, 32)
+	stroffset := make([]byte, 32, 64)
 	stroffset[31] = 128
-	strlength := make([]byte, 32)
+	strlength := make([]byte, 32, 64)
 	strlength[31] = byte(len(strin))
 	strvalue = common.RightPadBytes([]byte(strin), 32)
 	fixedarrinvalue1 := common.LeftPadBytes(fixedarrin[0].Bytes(), 32)
 	fixedarrinvalue2 := common.LeftPadBytes(fixedarrin[1].Bytes(), 32)
 	dynarroffset := make([]byte, 32)
 	dynarroffset[31] = byte(160 + ((len(strin)/32)+1)*32)
-	dynarrlength := make([]byte, 32)
+	dynarrlength := make([]byte, 32, 64)
 	dynarrlength[31] = byte(len(dynarrin))
 	dynarrinvalue1 := common.LeftPadBytes(dynarrin[0].Bytes(), 32)
 	dynarrinvalue2 := common.LeftPadBytes(dynarrin[1].Bytes(), 32)
@@ -570,9 +570,9 @@ func TestInputFixedArrayAndVariableInputLength(t *testing.T) {
 	}
 
 	// generate expected output
-	stroffset = make([]byte, 32)
+	stroffset = make([]byte, 32, 64)
 	stroffset[31] = 192
-	strlength = make([]byte, 32)
+	strlength = make([]byte, 32, 64)
 	strlength[31] = byte(len(strin))
 	strvalue = common.RightPadBytes([]byte(strin), 32)
 	fixedarrin1value1 := common.LeftPadBytes(fixedarrin1[0].Bytes(), 32)
@@ -604,15 +604,15 @@ func TestInputFixedArrayAndVariableInputLength(t *testing.T) {
 	}
 
 	// generate expected output
-	stroffset = make([]byte, 32)
+	stroffset = make([]byte, 32, 64)
 	stroffset[31] = 224
-	strlength = make([]byte, 32)
+	strlength = make([]byte, 32, 64)
 	strlength[31] = byte(len(strin))
 	strvalue = common.RightPadBytes([]byte(strin), 32)
 	fixedarrin1value1 = common.LeftPadBytes(fixedarrin1[0].Bytes(), 32)
 	fixedarrin1value2 = common.LeftPadBytes(fixedarrin1[1].Bytes(), 32)
 	dynarroffset = math.U256Bytes(big.NewInt(int64(256 + ((len(strin)/32)+1)*32)))
-	dynarrlength = make([]byte, 32)
+	dynarrlength = make([]byte, 32, 64)
 	dynarrlength[31] = byte(len(dynarrin))
 	dynarrinvalue1 = common.LeftPadBytes(dynarrin[0].Bytes(), 32)
 	dynarrinvalue2 = common.LeftPadBytes(dynarrin[1].Bytes(), 32)

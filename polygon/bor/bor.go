@@ -754,7 +754,7 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, _
 
 	// Ensure the extra data has all it's components
 	if len(header.Extra) < types.ExtraVanityLength {
-		header.Extra = append(header.Extra, bytes.Repeat([]byte{0x00}, types.ExtraVanityLength-len(header.Extra))...)
+		header.Extra = append(header.Extra, make([]byte, types.ExtraVanityLength-len(header.Extra))...)
 	}
 
 	header.Extra = header.Extra[:types.ExtraVanityLength]

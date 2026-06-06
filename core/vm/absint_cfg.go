@@ -194,7 +194,7 @@ func (s *astack) Pop(pc int) AbsValue {
 }
 
 func (s *astack) String(abbrev bool) string {
-	strs := make([]string, 0)
+	strs := make([]string, 0, len(s.values))
 	for _, c := range s.values {
 		strs = append(strs, c.String(abbrev))
 	}
@@ -391,10 +391,10 @@ func (proof *CfgProof) isValid() bool {
 }
 
 func StringifyAState(st *astate) [][]string {
-	stacks := make([][]string, 0)
+	stacks := make([][]string, 0, len(st.stackset))
 
 	for _, astack := range st.stackset {
-		var stack []string
+		stack := make([]string, 0, len(astack.values))
 		for _, v := range astack.values {
 			stack = append(stack, v.Stringify())
 		}

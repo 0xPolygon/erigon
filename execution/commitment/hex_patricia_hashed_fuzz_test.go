@@ -191,7 +191,7 @@ func Fuzz_HexPatriciaHashed_ReviewKeys(f *testing.F) {
 
 		// generate updates
 		for i := 0; i < int(kc); i++ {
-			key := make([]byte, length.Addr)
+			key := make([]byte, length.Addr, length.Addr+12)
 
 			for j := 0; j < len(key); j++ {
 				key[j] = byte(rnd.Intn(256))

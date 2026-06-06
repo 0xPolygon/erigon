@@ -364,7 +364,7 @@ func TestIteratorLinkUpdates(t *testing.T) {
 
 	clock.Run(c.cfg.RecheckInterval + 1*time.Second)
 
-	var wantNodes []*enode.Node
+	wantNodes := make([]*enode.Node, 0, len(tree1.Nodes())+len(tree3.Nodes()))
 	wantNodes = append(wantNodes, tree1.Nodes()...)
 	wantNodes = append(wantNodes, tree3.Nodes()...)
 	checkIterator(t, it, wantNodes)

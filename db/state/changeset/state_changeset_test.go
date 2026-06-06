@@ -58,7 +58,7 @@ func TestNoOverflowPages(t *testing.T) {
 func TestSerializeDeserializeDiff(t *testing.T) {
 	t.Parallel()
 
-	var d []kv.DomainEntryDiff
+	d := make([]kv.DomainEntryDiff, 0, 4)
 	step1, step2, step3 := [8]byte{1}, [8]byte{2}, [8]byte{3}
 	d = append(d, kv.DomainEntryDiff{Key: "key188888888", Value: []byte("value1"), PrevStepBytes: step1[:]})
 	d = append(d, kv.DomainEntryDiff{Key: "key288888888", Value: []byte("value2"), PrevStepBytes: step2[:]})
@@ -75,13 +75,13 @@ func TestSerializeDeserializeDiff(t *testing.T) {
 func TestMergeDiffSet(t *testing.T) {
 	t.Parallel()
 
-	var d1 []kv.DomainEntryDiff
+	d1 := make([]kv.DomainEntryDiff, 0, 3)
 	step1, step2, step3 := [8]byte{1}, [8]byte{2}, [8]byte{3}
 	d1 = append(d1, kv.DomainEntryDiff{Key: "key188888888", Value: []byte("value1"), PrevStepBytes: step1[:]})
 	d1 = append(d1, kv.DomainEntryDiff{Key: "key288888888", Value: []byte("value2"), PrevStepBytes: step2[:]})
 	d1 = append(d1, kv.DomainEntryDiff{Key: "key388888888", Value: []byte("value3"), PrevStepBytes: step3[:]})
 
-	var d2 []kv.DomainEntryDiff
+	d2 := make([]kv.DomainEntryDiff, 0, 3)
 	step4, step5, step6 := [8]byte{4}, [8]byte{5}, [8]byte{6}
 	d2 = append(d2, kv.DomainEntryDiff{Key: "key188888888", Value: []byte("value5"), PrevStepBytes: step5[:]})
 	d2 = append(d2, kv.DomainEntryDiff{Key: "key388888888", Value: []byte("value6"), PrevStepBytes: step6[:]})

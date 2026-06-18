@@ -30,6 +30,7 @@ type Store interface {
 
 	LastEventId(ctx context.Context) (uint64, error)
 	LastEventIdWithinWindow(ctx context.Context, fromID uint64, toTime time.Time) (uint64, error)
+	LastEventIdWithinWindowAndBudget(ctx context.Context, fromID uint64, toTime time.Time, maxBytes uint64) (uint64, error)
 	LastProcessedEventId(ctx context.Context) (uint64, error)
 	LastProcessedBlockInfo(ctx context.Context) (ProcessedBlockInfo, bool, error)
 	LastFrozenEventId() uint64

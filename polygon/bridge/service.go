@@ -43,6 +43,14 @@ import (
 // comfortable headroom over Heimdall's ~2-3s block time + indexing latency.
 const stateSyncScraperLag = 30 * time.Second
 
+// MaxStateSyncBytesPerBlock caps the cumulative state-sync record data mapped to
+// a single Bor block from the Valencia fork onward. Heimdall serves state-sync
+// records in an unbounded time window; without a cap a large backlog of
+// individually valid records produces a block whose state-sync system tx exceeds
+// the block size and p2p message limits. Overflow records are deferred to later
+// sprint-start blocks. Must stay identical to bor's params.MaxStateSyncBytesPerBlock.
+const MaxStateSyncBytesPerBlock = 1 << 20 // 1 MiB
+
 type eventFetcher interface {
 	FetchStateSyncEvents(ctx context.Context, fromId uint64, to time.Time, limit int) ([]*EventRecordWithTime, error)
 }
@@ -420,7 +428,14 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 				return err
 			}
 
-			endId, err = s.store.LastEventIdWithinWindow(ctx, startId, time.Unix(int64(toTime), 0))
+			windowEnd := time.Unix(int64(toTime), 0)
+			if s.borConfig.IsValencia(blockNum) {
+				// Cap the events mapped to this block by the per-block state-sync byte
+				// budget; overflow records roll into the next sprint-start window.
+				endId, err = s.store.LastEventIdWithinWindowAndBudget(ctx, startId, windowEnd, MaxStateSyncBytesPerBlock)
+			} else {
+				endId, err = s.store.LastEventIdWithinWindow(ctx, startId, windowEnd)
+			}
 			if err != nil {
 				return err
 			}

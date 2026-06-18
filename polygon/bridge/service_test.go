@@ -468,6 +468,91 @@ func TestService_ProcessNewBlocksWithZeroOverride(t *testing.T) {
 	wg.Wait()
 }
 
+// setupValenciaBudgetTest feeds two oversized state-sync events whose timestamps
+// both fall in the same sprint window (block 4, toTime=100). Their combined data
+// (2 x 600 KiB = 1.2 MiB) exceeds MaxStateSyncBytesPerBlock (1 MiB).
+func setupValenciaBudgetTest(t *testing.T, ctx context.Context, borConfig borcfg.BorConfig, wg *sync.WaitGroup) (*Service, []*types.Block) {
+	const bigDataLen = 600 * 1024
+
+	heimdallClient, b := setup(t, borConfig)
+	event1 := &EventRecordWithTime{
+		EventRecord: EventRecord{ID: 1, ChainID: "80002", Data: make([]byte, bigDataLen)},
+		Time:        time.Unix(50, 0), // block4 window (toTime=100)
+	}
+	event2 := &EventRecordWithTime{
+		EventRecord: EventRecord{ID: 2, ChainID: "80002", Data: make([]byte, bigDataLen)},
+		Time:        time.Unix(99, 0), // also < 100 => same window as event1
+	}
+	events := []*EventRecordWithTime{event1, event2}
+
+	heimdallClient.EXPECT().FetchStateSyncEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(events, nil).Times(1)
+	heimdallClient.EXPECT().FetchStateSyncEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]*EventRecordWithTime{}, nil).AnyTimes()
+	wg.Add(1)
+
+	go func(bridge *Service) {
+		defer wg.Done()
+
+		err := bridge.Run(ctx)
+		if err != nil && !errors.Is(err, ctx.Err()) {
+			t.Error(err)
+		}
+	}(b)
+
+	require.NoError(t, b.store.Prepare(ctx))
+
+	_, replayNeeded, err := b.InitialBlockReplayNeeded(ctx)
+	require.NoError(t, err)
+	require.True(t, replayNeeded)
+
+	genesis := types.NewBlockWithHeader(&types.Header{Time: 1, Number: big.NewInt(0)})
+	require.NoError(t, b.ReplayInitialBlock(ctx, genesis))
+
+	blocks := getBlocks(t, 10)
+	require.NoError(t, b.ProcessNewBlocks(ctx, blocks))
+
+	return b, blocks
+}
+
+func TestService_ProcessNewBlocksValenciaDefersOverflow(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	var wg sync.WaitGroup
+	borCfg := defaultBorConfig
+	borCfg.ValenciaBlock = big.NewInt(0) // active from genesis
+	b, blocks := setupValenciaBudgetTest(t, ctx, borCfg, &wg)
+
+	res, err := b.Events(ctx, blocks[3].Hash(), 4)
+	require.NoError(t, err)
+	require.Len(t, res, 1) // only event1 fits the 1 MiB budget
+
+	res, err = b.Events(ctx, blocks[5].Hash(), 6)
+	require.NoError(t, err)
+	require.Len(t, res, 1) // event2 deferred to the next sprint-start block
+
+	cancel()
+	wg.Wait()
+}
+
+func TestService_ProcessNewBlocksWithoutValenciaPacksTogether(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	var wg sync.WaitGroup
+	b, blocks := setupValenciaBudgetTest(t, ctx, defaultBorConfig, &wg) // ValenciaBlock nil
+
+	res, err := b.Events(ctx, blocks[3].Hash(), 4)
+	require.NoError(t, err)
+	require.Len(t, res, 2) // no budget => both events map to the same block
+
+	res, err = b.Events(ctx, blocks[5].Hash(), 6)
+	require.NoError(t, err)
+	require.Empty(t, res)
+
+	cancel()
+	wg.Wait()
+}
+
 func TestReaderEventsWithinTime(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

@@ -17,6 +17,7 @@
 package borcfg
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/erigontech/erigon-lib/common"
@@ -120,5 +121,20 @@ func TestCalculateCoinbase(t *testing.T) {
 					tc.blockNumber, tc.description, tc.expected, result)
 			}
 		}
+	})
+}
+
+func TestIsValencia(t *testing.T) {
+	t.Run("nil block never activates", func(t *testing.T) {
+		c := &BorConfig{}
+		assert.False(t, c.IsValencia(0))
+		assert.False(t, c.IsValencia(1_000_000))
+	})
+
+	t.Run("activates at and after the fork block", func(t *testing.T) {
+		c := &BorConfig{ValenciaBlock: big.NewInt(100)}
+		assert.False(t, c.IsValencia(99))
+		assert.True(t, c.IsValencia(100))
+		assert.True(t, c.IsValencia(101))
 	})
 }

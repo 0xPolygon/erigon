@@ -1536,10 +1536,20 @@ func GetValidatorBytes(h *types.Header, config *borcfg.BorConfig) []byte {
 		return nil
 	}
 
-	var blockExtraData BlockExtraData
-	if err := rlp.DecodeBytes(tempExtra[types.ExtraVanityLength:len(tempExtra)-types.ExtraSealLength], &blockExtraData); err != nil {
+	payload := tempExtra[types.ExtraVanityLength : len(tempExtra)-types.ExtraSealLength]
+
+	var blockExtraData blockExtraDataRawTxDeps
+	if err := rlp.DecodeBytes(payload, &blockExtraData); err != nil {
 		log.Error("error while decoding block extra data", "err", err)
 		return nil
+	}
+
+	if !config.IsValencia(h.Number.Uint64()) {
+		var txDependencies [][]int
+		if err := rlp.DecodeBytes(blockExtraData.TxDependencies, &txDependencies); err != nil {
+			log.Error("error while decoding block extra data", "err", err)
+			return nil
+		}
 	}
 
 	return blockExtraData.ValidatorBytes

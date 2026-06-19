@@ -348,3 +348,38 @@ func TestVerifyGiuglianoExtraDataValenciaGate(t *testing.T) {
 		t.Errorf("pre-Valencia must accept valid TxDependencies: %v", err)
 	}
 }
+
+// TestGetValidatorBytesValenciaGate covers the header-validation path
+// (VerifyHeader -> ValidateHeaderSprintValidators -> GetValidatorBytes): from
+// Valencia onward it must read ValidatorBytes without expanding TxDependencies,
+// while staying strict before the fork.
+func TestGetValidatorBytesValenciaGate(t *testing.T) {
+	const valencia = 100
+	cfg := &borcfg.BorConfig{NapoliBlock: big.NewInt(0), ValenciaBlock: big.NewInt(valencia)}
+	valBytes := []byte("validator set bytes")
+
+	header := func(number int64, txDeps []byte) *types.Header {
+		payload, err := rlp.EncodeToBytes(blockExtraDataRawTxDeps{ValidatorBytes: valBytes, TxDependencies: rlp.RawValue(txDeps)})
+		if err != nil {
+			t.Fatalf("encode extra: %v", err)
+		}
+		extra := make([]byte, types.ExtraVanityLength)
+		extra = append(extra, payload...)
+		return &types.Header{Number: big.NewInt(number), Extra: append(extra, make([]byte, types.ExtraSealLength)...)}
+	}
+
+	malformed := common.FromHex("0x81ff") // string where [][]int is expected
+
+	// Post-Valencia: malformed TxDependencies tolerated; validator bytes returned without expansion.
+	assert.Equal(t, valBytes, GetValidatorBytes(header(valencia, malformed), cfg))
+	// Pre-Valencia: malformed TxDependencies rejected (strict), nil returned.
+	assert.Nil(t, GetValidatorBytes(header(valencia-1, malformed), cfg))
+
+	valid, err := rlp.EncodeToBytes([][]int{{0}, {0, 1}})
+	if err != nil {
+		t.Fatalf("encode valid: %v", err)
+	}
+	for _, number := range []int64{valencia - 1, valencia} {
+		assert.Equal(t, valBytes, GetValidatorBytes(header(number, valid), cfg))
+	}
+}

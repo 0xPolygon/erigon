@@ -618,7 +618,7 @@ func (c *Bor) verifyCascadingFields(chain consensus.ChainHeaderReader, header *t
 	}
 
 	if c.config.IsGiugliano(number) {
-		if err := verifyGiuglianoExtraData(header); err != nil {
+		if err := verifyGiuglianoExtraData(header, c.config); err != nil {
 			return err
 		}
 	}
@@ -660,17 +660,23 @@ func ValidateHeaderGas(header *types.Header, parent *types.Header, chainConfig *
 
 // verifyGiuglianoExtraData checks that post-Giugliano blocks contain GasTarget
 // and BaseFeeChangeDenominator in the block's extra data.
-func verifyGiuglianoExtraData(header *types.Header) error {
+func verifyGiuglianoExtraData(header *types.Header, config *borcfg.BorConfig) error {
 	if len(header.Extra) < types.ExtraVanityLength+types.ExtraSealLength {
 		return fmt.Errorf("header extra too short for Giugliano validation")
 	}
 
-	var blockExtraData BlockExtraData
-	if err := rlp.DecodeBytes(
-		header.Extra[types.ExtraVanityLength:len(header.Extra)-types.ExtraSealLength],
-		&blockExtraData,
-	); err != nil {
+	payload := header.Extra[types.ExtraVanityLength : len(header.Extra)-types.ExtraSealLength]
+
+	var blockExtraData blockExtraDataRawTxDeps
+	if err := rlp.DecodeBytes(payload, &blockExtraData); err != nil {
 		return fmt.Errorf("failed to decode block extra data: %w", err)
+	}
+
+	if !config.IsValencia(header.Number.Uint64()) {
+		var txDependencies [][]int
+		if err := rlp.DecodeBytes(blockExtraData.TxDependencies, &txDependencies); err != nil {
+			return fmt.Errorf("failed to decode block extra data: %w", err)
+		}
 	}
 
 	if blockExtraData.GasTarget == nil || blockExtraData.BaseFeeChangeDenominator == nil {
@@ -1507,6 +1513,14 @@ type BlockExtraData struct {
 	GasTarget *uint64 `rlp:"optional"`
 
 	// BaseFeeChangeDenominator is the denominator used in base fee calculation, embedded post-Giugliano
+	BaseFeeChangeDenominator *uint64 `rlp:"optional"`
+}
+
+// blockExtraDataRawTxDeps mirrors BlockExtraData with TxDependencies left as raw RLP.
+type blockExtraDataRawTxDeps struct {
+	ValidatorBytes           []byte
+	TxDependencies           rlp.RawValue
+	GasTarget                *uint64 `rlp:"optional"`
 	BaseFeeChangeDenominator *uint64 `rlp:"optional"`
 }
 

@@ -420,7 +420,10 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 				return err
 			}
 
-			endId, err = s.store.LastEventIdWithinWindow(ctx, startId, time.Unix(int64(toTime), 0))
+			// Read the window boundary live from Heimdall (the same gated
+			// clerk/time query bor uses) rather than scanning the local event
+			// store, which holds not-yet-stable events Heimdall still withholds.
+			endId, err = s.lastEventIdWithinWindowFromHeimdall(ctx, startId, time.Unix(int64(toTime), 0))
 			if err != nil {
 				return err
 			}
@@ -529,6 +532,34 @@ func (s *Service) blockEventsTimeWindowEnd(last ProcessedBlockInfo, blockNum uin
 	}
 
 	return last.BlockTime, nil
+}
+
+// lastEventIdWithinWindowFromHeimdall returns the id of the last state-sync
+// event in [fromId, toTime), read live from Heimdall's clerk/time endpoint the
+// same way bor's CommitStates does. bor consumes Heimdall's server-side
+// stability gate, which withholds the most-recent event group until it is
+// confirmed; re-deriving the window from the local event store sees those
+// not-yet-stable events and over-includes them, diverging from the network and
+// producing a bad block on import. Returns 0 when the window contains no events.
+func (s *Service) lastEventIdWithinWindowFromHeimdall(ctx context.Context, fromId uint64, toTime time.Time) (uint64, error) {
+	events, err := s.eventFetcher.FetchStateSyncEvents(ctx, fromId, toTime, 0)
+	if err != nil {
+		return 0, err
+	}
+
+	var eventId uint64
+	// Stop at the first id gap or first event at/after toTime, matching the
+	// sequential, strict-before semantics bor enforces in CommitStates.
+	expected := fromId
+	for _, event := range events {
+		if event.ID != expected || !event.Time.Before(toTime) {
+			break
+		}
+		eventId = event.ID
+		expected++
+	}
+
+	return eventId, nil
 }
 
 func (s *Service) waitForScraper(ctx context.Context, toTime uint64) error {

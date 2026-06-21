@@ -82,6 +82,24 @@ func getBlocks(t *testing.T, numBlocks int) []*types.Block {
 	return blocks
 }
 
+// expectHeimdallEvents wires the mock event fetcher to behave like Heimdall's
+// clerk/time endpoint: every call (the scraper and the live window boundary
+// query in ProcessNewBlocks) returns the events with id >= fromID.
+func expectHeimdallEvents(client *MockClient, events []*EventRecordWithTime) {
+	client.EXPECT().
+		FetchStateSyncEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, fromID uint64, _ time.Time, _ int) ([]*EventRecordWithTime, error) {
+			res := make([]*EventRecordWithTime, 0, len(events))
+			for _, e := range events {
+				if e.ID >= fromID {
+					res = append(res, e)
+				}
+			}
+			return res, nil
+		}).
+		AnyTimes()
+}
+
 func TestService(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -134,8 +152,7 @@ func TestService(t *testing.T) {
 
 	events := []*EventRecordWithTime{event1, event2, event3, event4}
 
-	heimdallClient.EXPECT().FetchStateSyncEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(events, nil).Times(1)
-	heimdallClient.EXPECT().FetchStateSyncEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]*EventRecordWithTime{}, nil).AnyTimes()
+	expectHeimdallEvents(heimdallClient, events)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -251,8 +268,7 @@ func TestService_Unwind(t *testing.T) {
 
 	events := []*EventRecordWithTime{event1, event2, event3, event4}
 
-	heimdallClient.EXPECT().FetchStateSyncEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(events, nil).Times(1)
-	heimdallClient.EXPECT().FetchStateSyncEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]*EventRecordWithTime{}, nil).AnyTimes()
+	expectHeimdallEvents(heimdallClient, events)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -367,8 +383,7 @@ func setupOverrideTest(t *testing.T, ctx context.Context, borConfig borcfg.BorCo
 
 	events := []*EventRecordWithTime{event1, event2, event3, event4, event5, event6}
 
-	heimdallClient.EXPECT().FetchStateSyncEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(events, nil).Times(1)
-	heimdallClient.EXPECT().FetchStateSyncEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]*EventRecordWithTime{}, nil).AnyTimes()
+	expectHeimdallEvents(heimdallClient, events)
 	wg.Add(1)
 
 	go func(bridge *Service) {
@@ -514,8 +529,7 @@ func TestReaderEventsWithinTime(t *testing.T) {
 
 	events := []*EventRecordWithTime{event1, event2, event3, event4}
 
-	heimdallClient.EXPECT().FetchStateSyncEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(events, nil).Times(1)
-	heimdallClient.EXPECT().FetchStateSyncEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]*EventRecordWithTime{}, nil).AnyTimes()
+	expectHeimdallEvents(heimdallClient, events)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -567,6 +581,98 @@ func TestReaderEventsWithinTime(t *testing.T) {
 	res, err = b.EventsWithinTime(ctx, time.Unix(500, 0), time.Unix(600, 0))
 	require.Empty(t, res)
 	require.NoError(t, err)
+
+	cancel()
+	wg.Wait()
+}
+
+// TestService_ProcessNewBlocksGatesUnstableEvents is a regression test for the
+// state-sync over-inclusion bug: an event can already be in the local store
+// (the scraper runs ahead of the tip) while Heimdall's clerk/time stability
+// gate still withholds it for a given window. ProcessNewBlocks must take the
+// window boundary from the live, gated Heimdall response rather than from a
+// scan of the store, otherwise it includes the not-yet-stable event and
+// diverges from bor, producing a bad block on import.
+func TestService_ProcessNewBlocksGatesUnstableEvents(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	borConfig := borcfg.BorConfig{
+		Sprint:                     map[string]uint64{"0": 2},
+		StateReceiverContract:      "0x0000000000000000000000000000000000001001",
+		IndoreBlock:                big.NewInt(0),
+		StateSyncConfirmationDelay: map[string]uint64{"0": 1},
+	}
+	heimdallClient, b := setup(t, borConfig)
+
+	event1 := &EventRecordWithTime{
+		EventRecord: EventRecord{ID: 1, ChainID: "80002", Data: hexutil.MustDecode("0x01")},
+		Time:        time.Unix(50, 0),
+	}
+	event1Data, err := event1.MarshallBytes()
+	require.NoError(t, err)
+	// event2 lies inside block 2's window (time 80 < toTime 99) but Heimdall
+	// withholds it until it stabilises, modelled here as window end >= 150.
+	event2 := &EventRecordWithTime{
+		EventRecord: EventRecord{ID: 2, ChainID: "80002", Data: hexutil.MustDecode("0x02")},
+		Time:        time.Unix(80, 0),
+	}
+	event2Data, err := event2.MarshallBytes()
+	require.NoError(t, err)
+	events := []*EventRecordWithTime{event1, event2}
+
+	const gateReleaseToTime = 150
+	heimdallClient.EXPECT().
+		FetchStateSyncEvents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, fromID uint64, to time.Time, _ int) ([]*EventRecordWithTime, error) {
+			res := make([]*EventRecordWithTime, 0, len(events))
+			for _, e := range events {
+				if e.ID < fromID {
+					continue
+				}
+				// Stability gate: event2 is not released for a historical window
+				// until the window end reaches gateReleaseToTime. The scraper
+				// queries with to ~= now, so it always sees event2 and the store
+				// holds it - exactly the condition that tripped the bug.
+				if e.ID == 2 && to.Unix() < gateReleaseToTime {
+					continue
+				}
+				res = append(res, e)
+			}
+			return res, nil
+		}).
+		AnyTimes()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func(bridge *Service) {
+		defer wg.Done()
+		if err := bridge.Run(ctx); err != nil && !errors.Is(err, ctx.Err()) {
+			t.Error(err)
+		}
+	}(b)
+
+	require.NoError(t, b.store.Prepare(ctx))
+
+	genesis := types.NewBlockWithHeader(&types.Header{Time: 1, Number: big.NewInt(0)})
+	require.NoError(t, b.ReplayInitialBlock(ctx, genesis))
+
+	blocks := getBlocks(t, 4)
+	require.NoError(t, b.ProcessNewBlocks(ctx, blocks))
+
+	// Block 2 window ends at 99: the store holds event2 (time 80 < 99) but the
+	// gate withholds it, so only event1 is mapped. A store-based boundary would
+	// wrongly include event2 here.
+	res, err := b.Events(ctx, blocks[1].Hash(), 2)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	require.Equal(t, event1Data, res[0].Data())
+
+	// Block 4 window ends at 199 (>= release): event2 is included now.
+	res, err = b.Events(ctx, blocks[3].Hash(), 4)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	require.Equal(t, event2Data, res[0].Data())
 
 	cancel()
 	wg.Wait()

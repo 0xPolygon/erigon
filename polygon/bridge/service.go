@@ -432,9 +432,9 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 			if s.borConfig.IsValencia(blockNum) {
 				// Cap the events mapped to this block by the per-block state-sync byte
 				// budget; overflow records roll into the next sprint-start window.
-				endId, err = s.store.LastEventIdWithinWindowAndBudget(ctx, startId, windowEnd, MaxStateSyncBytesPerBlock)
+				endId, err = s.lastEventIdWithinWindowFromHeimdall(ctx, startId, windowEnd, MaxStateSyncBytesPerBlock)
 			} else {
-				endId, err = s.store.LastEventIdWithinWindow(ctx, startId, windowEnd)
+				endId, err = s.lastEventIdWithinWindowFromHeimdall(ctx, startId, windowEnd, 0)
 			}
 			if err != nil {
 				return err
@@ -544,6 +544,45 @@ func (s *Service) blockEventsTimeWindowEnd(last ProcessedBlockInfo, blockNum uin
 	}
 
 	return last.BlockTime, nil
+}
+
+// lastEventIdWithinWindowFromHeimdall returns the id of the last state-sync
+// event in [fromId, toTime), read live from Heimdall's clerk/time endpoint the
+// same way bor's CommitStates does. bor consumes Heimdall's server-side
+// stability gate, which withholds the most-recent event group until it is
+// confirmed; re-deriving the window from the local event store sees those
+// not-yet-stable events and over-includes them, diverging from the network and
+// producing a bad block on import. maxBytes caps the cumulative event data for
+// the Valencia per-block budget (0 disables). Returns 0 when the window
+// contains no events.
+func (s *Service) lastEventIdWithinWindowFromHeimdall(ctx context.Context, fromId uint64, toTime time.Time, maxBytes uint64) (uint64, error) {
+	events, err := s.eventFetcher.FetchStateSyncEvents(ctx, fromId, toTime, 0)
+	if err != nil {
+		return 0, err
+	}
+
+	var eventId, usedBytes uint64
+	// Stop at the first id gap or first event at/after toTime, matching the
+	// sequential, strict-before semantics bor enforces in CommitStates.
+	expected := fromId
+	for _, event := range events {
+		if event.ID != expected || !event.Time.Before(toTime) {
+			break
+		}
+
+		// Valencia: include a record only if it fits the remaining budget; the
+		// first overflowing record (and all after it) defers to a later window.
+		recordSize := uint64(len(event.Data))
+		if stateSyncBudgetExceeded(maxBytes, usedBytes, recordSize) {
+			break
+		}
+		usedBytes += recordSize
+
+		eventId = event.ID
+		expected++
+	}
+
+	return eventId, nil
 }
 
 func (s *Service) waitForScraper(ctx context.Context, toTime uint64) error {

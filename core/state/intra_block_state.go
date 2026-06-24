@@ -871,6 +871,16 @@ func (sdb *IntraBlockState) setState(addr common.Address, key common.Hash, value
 	return nil
 }
 
+// SetStateOverride applies an eth_call stateDiff slot as base state. Not for block execution.
+func (sdb *IntraBlockState) SetStateOverride(addr common.Address, key common.Hash, value uint256.Int) error {
+	stateObject, err := sdb.GetOrNewStateObject(addr)
+	if err != nil {
+		return err
+	}
+	stateObject.setCommittedStorage(key, value)
+	return nil
+}
+
 // SetStorage replaces the entire storage for the specified account with given
 // storage. This function should only be used for debugging.
 func (sdb *IntraBlockState) SetStorage(addr common.Address, storage Storage) error {

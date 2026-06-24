@@ -250,27 +250,20 @@ func GatherForks(config *chain.Config, genesisTime uint64) (heightForks []uint64
 		heightForks = append(heightForks, *config.Aura.PosdaoTransition)
 	}
 
+	// Note: Only include hard forks from bor config which correspond to an Ethereum
+	// equivalent hard fork and not a bor-specific one.
 	if config.Bor != nil {
+		// Shanghai equivalent
 		if config.Bor.GetAgraBlock() != nil {
 			heightForks = append(heightForks, config.Bor.GetAgraBlock().Uint64())
 		}
+		// Cancun equivalent
 		if config.Bor.GetNapoliBlock() != nil {
 			heightForks = append(heightForks, config.Bor.GetNapoliBlock().Uint64())
 		}
+		// Prague equivalent
 		if config.Bor.GetBhilaiBlock() != nil {
 			heightForks = append(heightForks, config.Bor.GetBhilaiBlock().Uint64())
-		}
-		if config.Bor.GetLisovoBlock() != nil {
-			heightForks = append(heightForks, config.Bor.GetLisovoBlock().Uint64())
-		}
-		if config.Bor.GetLisovoProBlock() != nil {
-			heightForks = append(heightForks, config.Bor.GetLisovoProBlock().Uint64())
-		}
-		if config.Bor.GetGiuglianoBlock() != nil {
-			heightForks = append(heightForks, config.Bor.GetGiuglianoBlock().Uint64())
-		}
-		if config.Bor.GetChicagoBlock() != nil {
-			heightForks = append(heightForks, config.Bor.GetChicagoBlock().Uint64())
 		}
 	}
 

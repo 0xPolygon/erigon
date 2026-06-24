@@ -61,12 +61,14 @@ func (overrides *StateOverrides) Override(state *state.IntraBlockState) error {
 			}
 			state.SetStorage(addr, intState)
 		}
-		// Apply state diff into specified accounts.
+		// Apply stateDiff as base storage so SSTORE sees the overridden original value.
 		if account.StateDiff != nil {
 			for key, value := range *account.StateDiff {
 				key := key
 				intValue := new(uint256.Int).SetBytes32(value.Bytes())
-				state.SetState(addr, key, *intValue)
+				if err := state.SetStateOverride(addr, key, *intValue); err != nil {
+					return err
+				}
 			}
 		}
 	}

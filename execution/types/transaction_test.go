@@ -1060,6 +1060,104 @@ func TestStateSyncTx_Encode_DeterministicAcrossCopies(t *testing.T) {
 	}
 }
 
+// TestStateSyncTx_EncodingSizeMatchesEncodeRLP verifies that EncodingSize()
+// returns the envelope size (bytes written by EncodeRLP minus its outer string
+// prefix). This is the invariant required by EncodingSizeGenericList / block
+// encoding. A mismatch causes "rlp: value size exceeds available input length"
+// on peers decoding blocks that contain StateSyncTx transactions.
+func TestStateSyncTx_EncodingSizeMatchesEncodeRLP(t *testing.T) {
+	t.Parallel()
+	for _, tx := range []*StateSyncTx{
+		makeBaseStateSyncTx(),
+		{StateSyncData: []*StateSyncData{{ID: 1, Contract: common.Address{}, Data: nil, TxHash: common.Hash{}}}},
+		{StateSyncData: []*StateSyncData{{ID: 1, Contract: testAddr, Data: make([]byte, 200), TxHash: randHash()}}},
+	} {
+		var buf bytes.Buffer
+		if err := tx.EncodeRLP(&buf); err != nil {
+			t.Fatalf("EncodeRLP failed: %v", err)
+		}
+		encodedBytes := buf.Bytes()
+		totalWritten := len(encodedBytes)
+
+		// EncodeRLP writes: StringPrefix(envelopeSize) + envelope
+		// EncodingSize() must equal envelopeSize (without the outer string prefix)
+		// so that EncodingSizeGenericList can add the prefix itself.
+		encodingSize := tx.EncodingSize()
+
+		// The outer string prefix length = totalWritten - envelopeSize
+		outerPrefixLen := totalWritten - encodingSize
+		if outerPrefixLen < 1 {
+			t.Fatalf("EncodingSize (%d) >= total bytes written (%d); must be strictly less (outer prefix missing)",
+				encodingSize, totalWritten)
+		}
+
+		// Verify the prefix is a valid RLP string prefix (0x80+ range for len>0)
+		if encodedBytes[0] < 0x80 || encodedBytes[0] >= 0xc0 {
+			t.Fatalf("EncodeRLP should write an RLP string, got first byte 0x%02x", encodedBytes[0])
+		}
+
+		// Cross-check: ListPrefixLen(encodingSize) + encodingSize == totalWritten
+		// which this is exactly what EncodingSizeGenericList computes per item
+		if rlp.ListPrefixLen(encodingSize)+encodingSize != totalWritten {
+			t.Fatalf("ListPrefixLen(%d) + %d = %d, want %d (total written)",
+				encodingSize, encodingSize,
+				rlp.ListPrefixLen(encodingSize)+encodingSize, totalWritten)
+		}
+	}
+}
+
+// TestStateSyncTx_BlockRoundTrip verifies that a block containing a StateSyncTx
+// can be RLP-encoded and decoded without error.
+// This prevents declaring more bytes than were actually written.
+func TestStateSyncTx_BlockRoundTrip(t *testing.T) {
+	t.Parallel()
+	ssTx := makeBaseStateSyncTx()
+
+	block := NewBlock(
+		&Header{
+			ParentHash:  common.HexToHash("0xaaa"),
+			UncleHash:   common.HexToHash("0xbbb"),
+			Coinbase:    common.HexToAddress("0xccc"),
+			Root:        common.HexToHash("0xddd"),
+			TxHash:      common.HexToHash("0xeee"),
+			ReceiptHash: common.HexToHash("0xfff"),
+			Difficulty:  big.NewInt(1),
+			Number:      big.NewInt(42),
+			GasLimit:    8_000_000,
+			GasUsed:     21_000,
+			Time:        1234567890,
+			BaseFee:     big.NewInt(1000000000),
+		},
+		[]Transaction{ssTx},
+		nil, // uncles
+		nil, // receipts
+		nil, // withdrawals
+	)
+
+	encoded, err := rlp.EncodeToBytes(block)
+	if err != nil {
+		t.Fatalf("Block.EncodeRLP failed: %v", err)
+	}
+
+	var decoded Block
+	if err := rlp.DecodeBytes(encoded, &decoded); err != nil {
+		t.Fatalf("Block.DecodeRLP failed: %v", err)
+	}
+
+	if decoded.NumberU64() != 42 {
+		t.Fatalf("block number mismatch: got %d, want 42", decoded.NumberU64())
+	}
+	if len(decoded.Transactions()) != 1 {
+		t.Fatalf("tx count mismatch: got %d, want 1", len(decoded.Transactions()))
+	}
+	if decoded.Transactions()[0].Type() != StateSyncTxType {
+		t.Fatalf("tx type mismatch: got %d, want %d", decoded.Transactions()[0].Type(), StateSyncTxType)
+	}
+	if decoded.Transactions()[0].Hash() != ssTx.Hash() {
+		t.Fatalf("tx hash mismatch: got %x, want %x", decoded.Transactions()[0].Hash(), ssTx.Hash())
+	}
+}
+
 func makeBaseStateSyncTx() *StateSyncTx {
 	return &StateSyncTx{
 		StateSyncData: []*StateSyncData{

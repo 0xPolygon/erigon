@@ -436,12 +436,12 @@ func PruneExecutionStage(s *PruneState, tx kv.RwTx, cfg ExecuteBlockCfg, ctx con
 	//  - stop prune when `tx.SpaceDirty()` is big
 	//  - and set ~500ms timeout
 	// because on slow disks - prune is slower. but for now - let's tune for nvme first, and add `tx.SpaceDirty()` check later https://github.com/erigontech/erigon/issues/11635
-	quickPruneTimeout := 500 * time.Millisecond
+	quickPruneTimeout := time.Duration(dbg.EnvInt("ERIGON_PRUNE_CHANGESETS_TIMEOUT_MS", 500)) * time.Millisecond
 
 	if s.ForwardProgress > cfg.syncCfg.MaxReorgDepth && !cfg.syncCfg.AlwaysGenerateChangesets {
 		// (chunkLen is 8Kb) * (1_000 chunks) = 8mb
 		// Some blocks on bor-mainnet have 400 chunks of diff = 3mb
-		var pruneDiffsLimitOnChainTip = 1_000
+		var pruneDiffsLimitOnChainTip = dbg.EnvInt("ERIGON_PRUNE_CHANGESETS_LIMIT", 1000)
 		pruneTimeout := quickPruneTimeout
 		if s.CurrentSyncCycle.IsInitialCycle {
 			pruneDiffsLimitOnChainTip = math.MaxInt

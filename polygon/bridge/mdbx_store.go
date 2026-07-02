@@ -187,16 +187,30 @@ func (s *MdbxStore) EventTxnToBlockNum(ctx context.Context, borTxHash common.Has
 
 // LastEventIdWithinWindow gets the last event id where event.Id >= fromId and event.Time < toTime.
 func (s *MdbxStore) LastEventIdWithinWindow(ctx context.Context, fromId uint64, toTime time.Time) (uint64, error) {
+	return s.LastEventIdWithinWindowAndBudget(ctx, fromId, toTime, 0)
+}
+
+// LastEventIdWithinWindowAndBudget is LastEventIdWithinWindow with an additional cap
+// on the cumulative event data bytes (the Valencia state-sync budget). maxBytes of 0
+// disables the cap.
+func (s *MdbxStore) LastEventIdWithinWindowAndBudget(ctx context.Context, fromId uint64, toTime time.Time, maxBytes uint64) (uint64, error) {
 	tx, err := s.db.BeginRo(ctx)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
 
-	return txStore{tx}.LastEventIdWithinWindow(ctx, fromId, toTime)
+	return txStore{tx}.LastEventIdWithinWindowAndBudget(ctx, fromId, toTime, maxBytes)
 }
 
-func lastEventIdWithinWindow(tx kv.Tx, fromId uint64, toTime time.Time) (uint64, error) {
+// stateSyncBudgetExceeded reports whether committing recordSize more bytes on top of
+// usedBytes would push the block's state-sync data past maxBytes. A maxBytes of 0
+// disables the budget. Mirrors bor's commitStates state-sync cap (the Valencia fork).
+func stateSyncBudgetExceeded(maxBytes, usedBytes, recordSize uint64) bool {
+	return maxBytes != 0 && usedBytes+recordSize > maxBytes
+}
+
+func lastEventIdWithinWindow(tx kv.Tx, fromId uint64, toTime time.Time, maxBytes uint64) (uint64, error) {
 	count, err := tx.Count(kv.BorEvents)
 	if err != nil {
 		return 0, err
@@ -214,7 +228,7 @@ func lastEventIdWithinWindow(tx kv.Tx, fromId uint64, toTime time.Time) (uint64,
 	}
 	defer it.Close()
 
-	var eventId uint64
+	var eventId, usedBytes uint64
 	for it.HasNext() {
 		_, v, err := it.Next()
 		if err != nil {
@@ -229,6 +243,15 @@ func lastEventIdWithinWindow(tx kv.Tx, fromId uint64, toTime time.Time) (uint64,
 		if !event.Time.Before(toTime) {
 			return eventId, nil
 		}
+
+		// Valencia: a record is included only if it fits entirely within the
+		// remaining budget; the first overflowing record (and all after it) is
+		// deferred to a later window, matching bor's commitStates semantics.
+		recordSize := uint64(len(event.Data))
+		if stateSyncBudgetExceeded(maxBytes, usedBytes, recordSize) {
+			return eventId, nil
+		}
+		usedBytes += recordSize
 
 		eventId = event.ID
 	}
@@ -491,7 +514,14 @@ func (s txStore) EventTxnToBlockNum(ctx context.Context, borTxHash common.Hash) 
 
 // LastEventIdWithinWindow gets the last event id where event.Id >= fromId and event.Time < toTime.
 func (s txStore) LastEventIdWithinWindow(ctx context.Context, fromId uint64, toTime time.Time) (uint64, error) {
-	return lastEventIdWithinWindow(s.tx, fromId, toTime)
+	return lastEventIdWithinWindow(s.tx, fromId, toTime, 0)
+}
+
+// LastEventIdWithinWindowAndBudget is LastEventIdWithinWindow with an additional cap
+// on the cumulative event data bytes (the Valencia state-sync budget). maxBytes of 0
+// disables the cap.
+func (s txStore) LastEventIdWithinWindowAndBudget(ctx context.Context, fromId uint64, toTime time.Time, maxBytes uint64) (uint64, error) {
+	return lastEventIdWithinWindow(s.tx, fromId, toTime, maxBytes)
 }
 
 func (s txStore) PutEvents(ctx context.Context, events []*EventRecordWithTime) error {

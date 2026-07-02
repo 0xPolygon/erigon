@@ -43,6 +43,14 @@ import (
 // comfortable headroom over Heimdall's ~2-3s block time + indexing latency.
 const stateSyncScraperLag = 30 * time.Second
 
+// MaxStateSyncBytesPerBlock caps the cumulative state-sync record data mapped to
+// a single Bor block from the Valencia fork onward. Heimdall serves state-sync
+// records in an unbounded time window; without a cap a large backlog of
+// individually valid records produces a block whose state-sync system tx exceeds
+// the block size and p2p message limits. Overflow records are deferred to later
+// sprint-start blocks. Must stay identical to bor's params.MaxStateSyncBytesPerBlock.
+const MaxStateSyncBytesPerBlock = 1 << 20 // 1 MiB
+
 type eventFetcher interface {
 	FetchStateSyncEvents(ctx context.Context, fromId uint64, to time.Time, limit int) ([]*EventRecordWithTime, error)
 }
@@ -420,7 +428,14 @@ func (s *Service) ProcessNewBlocks(ctx context.Context, blocks []*types.Block) e
 				return err
 			}
 
-			endId, err = s.store.LastEventIdWithinWindow(ctx, startId, time.Unix(int64(toTime), 0))
+			windowEnd := time.Unix(int64(toTime), 0)
+			if s.borConfig.IsValencia(blockNum) {
+				// Cap the events mapped to this block by the per-block state-sync byte
+				// budget; overflow records roll into the next sprint-start window.
+				endId, err = s.lastEventIdWithinWindowFromHeimdall(ctx, startId, windowEnd, MaxStateSyncBytesPerBlock)
+			} else {
+				endId, err = s.lastEventIdWithinWindowFromHeimdall(ctx, startId, windowEnd, 0)
+			}
 			if err != nil {
 				return err
 			}
@@ -529,6 +544,45 @@ func (s *Service) blockEventsTimeWindowEnd(last ProcessedBlockInfo, blockNum uin
 	}
 
 	return last.BlockTime, nil
+}
+
+// lastEventIdWithinWindowFromHeimdall returns the id of the last state-sync
+// event in [fromId, toTime), read live from Heimdall's clerk/time endpoint the
+// same way bor's CommitStates does. bor consumes Heimdall's server-side
+// stability gate, which withholds the most-recent event group until it is
+// confirmed; re-deriving the window from the local event store sees those
+// not-yet-stable events and over-includes them, diverging from the network and
+// producing a bad block on import. maxBytes caps the cumulative event data for
+// the Valencia per-block budget (0 disables). Returns 0 when the window
+// contains no events.
+func (s *Service) lastEventIdWithinWindowFromHeimdall(ctx context.Context, fromId uint64, toTime time.Time, maxBytes uint64) (uint64, error) {
+	events, err := s.eventFetcher.FetchStateSyncEvents(ctx, fromId, toTime, 0)
+	if err != nil {
+		return 0, err
+	}
+
+	var eventId, usedBytes uint64
+	// Stop at the first id gap or first event at/after toTime, matching the
+	// sequential, strict-before semantics bor enforces in CommitStates.
+	expected := fromId
+	for _, event := range events {
+		if event.ID != expected || !event.Time.Before(toTime) {
+			break
+		}
+
+		// Valencia: include a record only if it fits the remaining budget; the
+		// first overflowing record (and all after it) defers to a later window.
+		recordSize := uint64(len(event.Data))
+		if stateSyncBudgetExceeded(maxBytes, usedBytes, recordSize) {
+			break
+		}
+		usedBytes += recordSize
+
+		eventId = event.ID
+		expected++
+	}
+
+	return eventId, nil
 }
 
 func (s *Service) waitForScraper(ctx context.Context, toTime uint64) error {

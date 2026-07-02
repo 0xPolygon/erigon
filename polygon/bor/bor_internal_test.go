@@ -31,6 +31,7 @@ import (
 	"github.com/erigontech/erigon-lib/common"
 	"github.com/erigontech/erigon-lib/crypto"
 	"github.com/erigontech/erigon/execution/consensus"
+	"github.com/erigontech/erigon/execution/rlp"
 	"github.com/erigontech/erigon/execution/types"
 	"github.com/erigontech/erigon/polygon/bor/borcfg"
 	"github.com/erigontech/erigon/polygon/bor/statefull"
@@ -300,4 +301,85 @@ func TestValidateHeaderTime_Giugliano(t *testing.T) {
 		err := ValidateHeaderTime(header, now, parent, fixedSuccession{1}, config, cache)
 		assert.NoError(t, err)
 	})
+}
+
+func TestVerifyGiuglianoExtraDataValenciaGate(t *testing.T) {
+	const valencia = 100
+	cfg := &borcfg.BorConfig{ValenciaBlock: big.NewInt(valencia)}
+	gasTarget, bfcd := uint64(30_000_000), uint64(8)
+
+	build := func(txDeps []byte) []byte {
+		payload, err := rlp.EncodeToBytes(blockExtraDataRawTxDeps{
+			TxDependencies:           rlp.RawValue(txDeps),
+			GasTarget:                &gasTarget,
+			BaseFeeChangeDenominator: &bfcd,
+		})
+		if err != nil {
+			t.Fatalf("encode extra: %v", err)
+		}
+		extra := make([]byte, types.ExtraVanityLength)
+		extra = append(extra, payload...)
+		return append(extra, make([]byte, types.ExtraSealLength)...)
+	}
+	header := func(number int64, txDeps []byte) *types.Header {
+		return &types.Header{Number: big.NewInt(number), Extra: build(txDeps)}
+	}
+
+	malformed := map[string][]byte{
+		"string":      common.FromHex("0x81ff"),
+		"list-of-int": common.FromHex("0xc101"),
+	}
+	for name, raw := range malformed {
+		if err := verifyGiuglianoExtraData(header(valencia-1, raw), cfg); err == nil {
+			t.Errorf("pre-Valencia must reject malformed TxDependencies: %s", name)
+		}
+		for _, n := range []int64{valencia, valencia + 1} {
+			if err := verifyGiuglianoExtraData(header(n, raw), cfg); err != nil {
+				t.Errorf("block %d must accept malformed TxDependencies %s: %v", n, name, err)
+			}
+		}
+	}
+
+	valid, err := rlp.EncodeToBytes([][]int{{0}, {0, 1}})
+	if err != nil {
+		t.Fatalf("encode valid: %v", err)
+	}
+	if err := verifyGiuglianoExtraData(header(valencia-1, valid), cfg); err != nil {
+		t.Errorf("pre-Valencia must accept valid TxDependencies: %v", err)
+	}
+}
+
+// TestGetValidatorBytesValenciaGate covers the header-validation path
+// (VerifyHeader -> ValidateHeaderSprintValidators -> GetValidatorBytes): from
+// Valencia onward it must read ValidatorBytes without expanding TxDependencies,
+// while staying strict before the fork.
+func TestGetValidatorBytesValenciaGate(t *testing.T) {
+	const valencia = 100
+	cfg := &borcfg.BorConfig{NapoliBlock: big.NewInt(0), ValenciaBlock: big.NewInt(valencia)}
+	valBytes := []byte("validator set bytes")
+
+	header := func(number int64, txDeps []byte) *types.Header {
+		payload, err := rlp.EncodeToBytes(blockExtraDataRawTxDeps{ValidatorBytes: valBytes, TxDependencies: rlp.RawValue(txDeps)})
+		if err != nil {
+			t.Fatalf("encode extra: %v", err)
+		}
+		extra := make([]byte, types.ExtraVanityLength)
+		extra = append(extra, payload...)
+		return &types.Header{Number: big.NewInt(number), Extra: append(extra, make([]byte, types.ExtraSealLength)...)}
+	}
+
+	malformed := common.FromHex("0x81ff") // string where [][]int is expected
+
+	// Post-Valencia: malformed TxDependencies tolerated; validator bytes returned without expansion.
+	assert.Equal(t, valBytes, GetValidatorBytes(header(valencia, malformed), cfg))
+	// Pre-Valencia: malformed TxDependencies rejected (strict), nil returned.
+	assert.Nil(t, GetValidatorBytes(header(valencia-1, malformed), cfg))
+
+	valid, err := rlp.EncodeToBytes([][]int{{0}, {0, 1}})
+	if err != nil {
+		t.Fatalf("encode valid: %v", err)
+	}
+	for _, number := range []int64{valencia - 1, valencia} {
+		assert.Equal(t, valBytes, GetValidatorBytes(header(number, valid), cfg))
+	}
 }

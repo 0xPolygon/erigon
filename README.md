@@ -1,5 +1,15 @@
 # Erigon
 
+> [!WARNING]
+> **Polygon Labs support ended on 1 August 2026.**
+>
+> Polygon Labs no longer maintains or supports this repository and will not
+> provide further releases, bug fixes, security updates, or operational
+> support. Existing deployments are expected to continue syncing only until
+> the next Bor hardfork; this is not a compatibility or support guarantee.
+> Polygon PoS node operators should migrate to
+> [Bor](https://github.com/0xPolygon/bor) before that hardfork.
+
 [![Docs](https://img.shields.io/badge/docs-up-green)](https://docs.erigon.tech/)
 [![Blog](https://img.shields.io/badge/blog-up-green)](https://erigon.tech/blog/)
 [![Twitter](https://img.shields.io/twitter/follow/ErigonEth?style=social)](https://x.com/ErigonEth)

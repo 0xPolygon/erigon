@@ -241,14 +241,16 @@ func ExecV3(ctx context.Context,
 	chainReader := NewChainReaderImpl(cfg.chainConfig, applyTx, blockReader, logger)
 	agg := cfg.db.(dbstate.HasAgg).Agg().(*dbstate.Aggregator)
 	if !inMemExec && !isMining {
+		// Always use 4 workers for file building to keep chaindata small.
+		// Chain-tip mode with only 1 worker can't keep up with high-throughput chains
+		// like Polygon, causing MDBX ReclaimableSpace to grow unbounded.
+		// 4 workers = all 4 domains (Accounts, Storage, Code, Commitment) in parallel.
+		agg.SetCollateAndBuildWorkers(min(4, estimate.StateV3Collate.Workers()))
+		agg.SetMergeWorkers(min(2, estimate.StateV3Collate.Workers()))
 		if initialCycle {
-			agg.SetCollateAndBuildWorkers(min(2, estimate.StateV3Collate.Workers()))
-			agg.SetMergeWorkers(min(1, estimate.StateV3Collate.Workers()))
 			agg.SetCompressWorkers(estimate.CompressSnapshot.Workers())
 		} else {
-			agg.SetCollateAndBuildWorkers(1)
-			agg.SetMergeWorkers(1)
-			agg.SetCompressWorkers(1)
+			agg.SetCompressWorkers(min(2, estimate.CompressSnapshot.Workers()))
 		}
 	}
 
